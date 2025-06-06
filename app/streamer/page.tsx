@@ -38,7 +38,7 @@ export default function StreamerPage() {
           {/* Left Column - Main Content */}
           <div className="lg:col-span-3 flex flex-col gap-4">
             {/* Video Section */}
-            <Card className="flex-1">
+            <Card className="flex-1 border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -50,6 +50,11 @@ export default function StreamerPage() {
                       variant={micEnabled ? "default" : "destructive"}
                       size="sm"
                       onClick={() => setMicEnabled(!micEnabled)}
+                      className={
+                        micEnabled
+                          ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                          : ""
+                      }
                     >
                       {micEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
                     </Button>
@@ -57,6 +62,11 @@ export default function StreamerPage() {
                       variant={videoEnabled ? "default" : "destructive"}
                       size="sm"
                       onClick={() => setVideoEnabled(!videoEnabled)}
+                      className={
+                        videoEnabled
+                          ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                          : ""
+                      }
                     >
                       {videoEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
                     </Button>
@@ -90,7 +100,7 @@ export default function StreamerPage() {
             </Card>
 
             {/* Chat Section */}
-            <Card className="h-80">
+            <Card className="h-80 border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Live Chat</CardTitle>
               </CardHeader>
@@ -103,10 +113,10 @@ export default function StreamerPage() {
           {/* Right Column - Stats and Controls */}
           <div className="space-y-4">
             {/* Stream Stats */}
-            <Card>
+            <Card className="border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <Activity className="h-5 w-5" />
+                  <Activity className="h-5 w-5 text-orange-500" />
                   Stream Stats
                 </CardTitle>
               </CardHeader>
@@ -114,7 +124,7 @@ export default function StreamerPage() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium">Viewers</span>
-                    <span className="text-lg font-bold text-green-600">{viewers.toLocaleString()}</span>
+                    <span className="text-lg font-bold text-orange-600">{viewers.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -137,14 +147,14 @@ export default function StreamerPage() {
                   <Progress value={(bitrate / 5000) * 100} className="h-2" />
                 </div>
 
-                <div className="pt-2 border-t">
+                <div className="pt-2 border-t border-orange-200 dark:border-orange-800">
                   <div className="grid grid-cols-2 gap-4 text-center">
                     <div>
-                      <div className="text-lg font-bold">2.4K</div>
+                      <div className="text-lg font-bold text-orange-600">2.4K</div>
                       <div className="text-xs text-muted-foreground">Followers</div>
                     </div>
                     <div>
-                      <div className="text-lg font-bold">156</div>
+                      <div className="text-lg font-bold text-orange-600">156</div>
                       <div className="text-xs text-muted-foreground">Likes</div>
                     </div>
                   </div>
@@ -153,7 +163,7 @@ export default function StreamerPage() {
             </Card>
 
             {/* Viewer Chart */}
-            <Card>
+            <Card className="border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Viewer Trend</CardTitle>
               </CardHeader>
@@ -163,23 +173,27 @@ export default function StreamerPage() {
             </Card>
 
             {/* Quick Actions */}
-            <Card>
+            <Card className="border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Button variant="outline" className="w-full justify-start">
+                <Button variant="outline" className="w-full justify-start hover:bg-orange-50 dark:hover:bg-orange-950">
                   Share Stream
                 </Button>
-                <Button variant="outline" className="w-full justify-start">
+                <Button variant="outline" className="w-full justify-start hover:bg-orange-50 dark:hover:bg-orange-950">
                   Stream Settings
                 </Button>
-                <Button variant="outline" className="w-full justify-start">
+                <Button variant="outline" className="w-full justify-start hover:bg-orange-50 dark:hover:bg-orange-950">
                   Moderator Tools
                 </Button>
                 <Button
                   variant={isLive ? "destructive" : "default"}
-                  className="w-full"
+                  className={
+                    !isLive
+                      ? "w-full bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                      : "w-full"
+                  }
                   onClick={() => setIsLive(!isLive)}
                 >
                   {isLive ? "End Stream" : "Go Live"}

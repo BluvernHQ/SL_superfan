@@ -72,7 +72,7 @@ export default function ViewerPage() {
           {/* Left Column - Main Content */}
           <div className="lg:col-span-3 flex flex-col gap-2">
             {/* Video Section */}
-            <Card>
+            <Card className="border-orange-200 dark:border-orange-800">
               <CardContent className="p-0">
                 <div className="relative bg-black rounded-t-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
                   <img
@@ -87,7 +87,7 @@ export default function ViewerPage() {
                     </Badge>
                   </div>
                   <div className="absolute top-4 right-4">
-                    <Badge variant="secondary" className="text-sm">
+                    <Badge variant="secondary" className="text-sm bg-black/70 text-white">
                       <Users className="w-3 h-3 mr-1" />
                       1,234 viewers
                     </Badge>
@@ -98,7 +98,7 @@ export default function ViewerPage() {
                 </div>
 
                 {/* Channel Details */}
-                <div className="p-6">
+                <div className="p-6 bg-card">
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <h1 className="text-xl font-bold mb-3">Epic Gaming Session - Boss Fight!</h1>
@@ -108,13 +108,18 @@ export default function ViewerPage() {
                           1,234 watching
                         </span>
                         <span>Started 2 hours ago</span>
-                        <Badge variant="outline">Gaming</Badge>
+                        <Badge
+                          variant="outline"
+                          className="border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400"
+                        >
+                          Gaming
+                        </Badge>
                       </div>
                       <div className="flex items-center gap-3">
                         <img
                           src="/placeholder.svg?height=40&width=40"
                           alt="GamerPro123"
-                          className="w-10 h-10 rounded-full"
+                          className="w-10 h-10 rounded-full border-2 border-orange-300 dark:border-orange-700"
                         />
                         <div>
                           <div className="font-medium">GamerPro123</div>
@@ -128,17 +133,27 @@ export default function ViewerPage() {
                         size="sm"
                         onClick={handleLike}
                         disabled={hasLiked}
+                        className={
+                          hasLiked
+                            ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                            : "hover:bg-orange-50 dark:hover:bg-orange-950"
+                        }
                       >
                         <Heart className={`w-4 h-4 mr-1 ${hasLiked ? "fill-current" : ""}`} />
                         {likes}
                       </Button>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" className="hover:bg-orange-50 dark:hover:bg-orange-950">
                         <Share className="w-4 h-4 mr-1" />
                         Share
                       </Button>
                       <Button
                         variant={isFollowing ? "secondary" : "default"}
                         onClick={() => setIsFollowing(!isFollowing)}
+                        className={
+                          !isFollowing
+                            ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                            : ""
+                        }
                       >
                         {isFollowing ? "Following" : "Follow"}
                       </Button>
@@ -149,7 +164,7 @@ export default function ViewerPage() {
             </Card>
 
             {/* Chat Section */}
-            <Card className="h-80">
+            <Card className="h-80 border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Live Chat</CardTitle>
               </CardHeader>
@@ -161,7 +176,7 @@ export default function ViewerPage() {
 
           {/* Right Column - Other Streams */}
           <div className="space-y-4">
-            <Card>
+            <Card className="border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Other Live Streams</CardTitle>
               </CardHeader>
@@ -172,7 +187,7 @@ export default function ViewerPage() {
                       <img
                         src={stream.thumbnail || "/placeholder.svg"}
                         alt={stream.title}
-                        className="w-full h-24 object-cover rounded-lg group-hover:opacity-80 transition-opacity"
+                        className="w-full h-24 object-cover rounded-lg group-hover:opacity-80 transition-opacity border border-orange-200 dark:border-orange-800"
                       />
                       <div className="absolute top-2 left-2">
                         <Badge variant="destructive" className="text-xs">
@@ -181,23 +196,26 @@ export default function ViewerPage() {
                         </Badge>
                       </div>
                       <div className="absolute top-2 right-2">
-                        <Badge variant="secondary" className="text-xs">
+                        <Badge variant="secondary" className="text-xs bg-black/70 text-white">
                           {stream.viewers}
                         </Badge>
                       </div>
                       <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button size="sm" variant="secondary">
+                        <Button size="sm" variant="secondary" className="bg-orange-600 hover:bg-orange-700 text-white">
                           <Play className="w-4 h-4 mr-1" />
                           Watch
                         </Button>
                       </div>
                     </div>
                     <div>
-                      <h4 className="font-medium text-sm line-clamp-2 group-hover:text-primary transition-colors">
+                      <h4 className="font-medium text-sm line-clamp-2 group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">
                         {stream.title}
                       </h4>
                       <p className="text-xs text-muted-foreground">{stream.streamer}</p>
-                      <Badge variant="outline" className="text-xs mt-1">
+                      <Badge
+                        variant="outline"
+                        className="text-xs mt-1 border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400"
+                      >
                         {stream.category}
                       </Badge>
                     </div>
@@ -207,14 +225,18 @@ export default function ViewerPage() {
             </Card>
 
             {/* Recommended Categories */}
-            <Card>
+            <Card className="border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Browse Categories</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
                   {["Gaming", "Music", "Art", "Cooking", "Tech", "Sports"].map((category) => (
-                    <Button key={category} variant="ghost" className="w-full justify-start text-sm">
+                    <Button
+                      key={category}
+                      variant="ghost"
+                      className="w-full justify-start text-sm hover:bg-orange-50 dark:hover:bg-orange-950 hover:text-orange-600 dark:hover:text-orange-400"
+                    >
                       {category}
                     </Button>
                   ))}

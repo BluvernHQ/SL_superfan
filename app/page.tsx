@@ -55,7 +55,7 @@ export default function LandingPage() {
       <main className="container mx-auto px-4 py-8">
         {/* Hero Section */}
         <section className="text-center py-12 mb-12">
-          <h1 className="text-4xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+          <h1 className="text-4xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-orange-600 to-orange-400 bg-clip-text text-transparent">
             Stream Your Passion
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
@@ -63,7 +63,7 @@ export default function LandingPage() {
           </p>
           <Button
             size="lg"
-            className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+            className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
             onClick={() => setShowStreamModal(true)}
           >
             <Play className="mr-2 h-5 w-5" />
@@ -139,15 +139,15 @@ export default function LandingPage() {
             <h2 className="text-2xl font-bold mb-8">Join Our Growing Community</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <div>
-                <div className="text-3xl font-bold text-purple-600 mb-2">10K+</div>
+                <div className="text-3xl font-bold text-orange-600 mb-2">10K+</div>
                 <div className="text-muted-foreground">Active Streamers</div>
               </div>
               <div>
-                <div className="text-3xl font-bold text-blue-600 mb-2">500K+</div>
+                <div className="text-3xl font-bold text-orange-500 mb-2">500K+</div>
                 <div className="text-muted-foreground">Monthly Viewers</div>
               </div>
               <div>
-                <div className="text-3xl font-bold text-green-600 mb-2">1M+</div>
+                <div className="text-3xl font-bold text-orange-400 mb-2">1M+</div>
                 <div className="text-muted-foreground">Hours Streamed</div>
               </div>
             </div>

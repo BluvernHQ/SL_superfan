@@ -39,9 +39,14 @@ export function ViewerChart() {
     <div className="h-32">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data}>
-          <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fontSize: 10 }} />
+          <XAxis
+            dataKey="time"
+            axisLine={false}
+            tickLine={false}
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          />
           <YAxis hide />
-          <Line type="monotone" dataKey="viewers" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+          <Line type="monotone" dataKey="viewers" stroke="hsl(24 100% 50%)" strokeWidth={2} dot={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>
