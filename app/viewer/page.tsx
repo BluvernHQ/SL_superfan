@@ -48,6 +48,8 @@ export default function ViewerPage() {
   const [currentViewers, setCurrentViewers] = useState(1234)
   const [connectionState, setConnectionState] = useState<string>("disconnected")
   const [isAudioMuted, setIsAudioMuted] = useState(true) // Muted by default
+  const [sidebarStreams, setSidebarStreams] = useState<any[]>([])
+  const [isLoadingSidebarStreams, setIsLoadingSidebarStreams] = useState(true)
 
   const remoteVideosRef = useRef<HTMLDivElement>(null)
   const logsRef = useRef<HTMLDivElement>(null)
@@ -525,6 +527,49 @@ export default function ViewerPage() {
     return num.toString()
   }
 
+  const fetchSidebarStreams = async () => {
+    try {
+      setIsLoadingSidebarStreams(true)
+      const response = await fetch("https://superfan.alterwork.in/get_live", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Convert the streams object to an array and filter out current room
+        const streamsArray = Object.entries(data.live || {})
+          .filter(([sessionId, streamData]: [string, any]) => streamData.roomId !== roomId)
+          .map(([sessionId, streamData]: [string, any]) => ({
+            sessionId,
+            ...streamData,
+            id: streamData.roomId,
+            title: `${streamData.name}'s Stream`,
+            streamer: streamData.name,
+            viewers: Math.floor(Math.random() * 1000) + 50,
+            thumbnail: "/placeholder.svg?height=120&width=160",
+          }))
+          .slice(0, 5) // Show only top 5
+        setSidebarStreams(streamsArray)
+      }
+    } catch (error) {
+      console.error("Error fetching sidebar streams:", error)
+    } finally {
+      setIsLoadingSidebarStreams(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchSidebarStreams()
+
+    // Poll for updates every 60 seconds
+    const interval = setInterval(fetchSidebarStreams, 60000)
+
+    return () => clearInterval(interval)
+  }, [roomId])
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -725,6 +770,69 @@ export default function ViewerPage() {
                     <span className="text-sm font-bold text-orange-600">{formatNumber(currentViewers)}</span>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Live Streams Sidebar */}
+            <Card className="border-orange-200 dark:border-orange-800">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Play className="h-5 w-5 text-orange-500" />
+                  Other Live Streams
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ScrollArea className="h-80">
+                  <div className="p-4 space-y-3">
+                    {isLoadingSidebarStreams ? (
+                      // Loading skeleton
+                      Array.from({ length: 3 }).map((_, index) => (
+                        <div key={index} className="flex gap-3 animate-pulse">
+                          <div className="w-20 h-14 bg-muted rounded"></div>
+                          <div className="flex-1">
+                            <div className="h-3 bg-muted rounded mb-1"></div>
+                            <div className="h-2 bg-muted rounded mb-1"></div>
+                            <div className="h-2 bg-muted rounded w-1/2"></div>
+                          </div>
+                        </div>
+                      ))
+                    ) : sidebarStreams.length > 0 ? (
+                      sidebarStreams.map((stream) => (
+                        <div
+                          key={stream.sessionId}
+                          className="flex gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                          onClick={() => window.open(`/viewer?roomId=${stream.roomId}`, "_blank")}
+                        >
+                          <div className="relative">
+                            <img
+                              src={stream.thumbnail || "/placeholder.svg"}
+                              alt={stream.title}
+                              className="w-20 h-14 object-cover rounded"
+                            />
+                            <div className="absolute top-1 left-1">
+                              <Badge variant="destructive" className="text-xs px-1 py-0">
+                                LIVE
+                              </Badge>
+                            </div>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium text-sm line-clamp-2 mb-1">{stream.title}</h4>
+                            <p className="text-xs text-muted-foreground mb-1">{stream.streamer}</p>
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Users className="w-3 h-3" />
+                              {formatNumber(stream.viewers)}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-6">
+                        <Play className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">No other streams</p>
+                      </div>
+                    )}
+                  </div>
+                </ScrollArea>
               </CardContent>
             </Card>
 
