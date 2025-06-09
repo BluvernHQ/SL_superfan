@@ -42,8 +42,8 @@ export default function StreamerPage() {
   const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const stopSessionPollingRef = useRef(false)
 
-  const FLASK_PROXY_URL = "/janus_proxy"
-  const FLASK_SERVER_URL = "/"
+  const FLASK_PROXY_URL = "https://superfan.alterwork.in:3001/janus_proxy"
+  const FLASK_SERVER_URL = "https://superfan.alterwork.in:3001/"
 
   // Firebase authentication check
   useEffect(() => {
