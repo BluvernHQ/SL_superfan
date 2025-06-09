@@ -1,66 +1,528 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Heart, Share, Users, Eye, Play } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Heart, Share, Users, Eye, Play, Square, Wifi, VolumeX, Volume2 } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { LiveChat } from "@/components/live-chat"
+import { useSearchParams } from "next/navigation"
+
+// +++ FIX: Create a separate component to manage the video stream object +++
+const VideoPlayer = ({ stream, muted }: { stream: MediaStream; muted: boolean }) => {
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream
+    }
+  }, [stream])
+
+  return (
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      controls={false}
+      muted={muted} // Use the muted prop
+      className="w-full h-full object-cover"
+    />
+  )
+}
 
 export default function ViewerPage() {
+  const searchParams = useSearchParams()
+  const roomIdFromUrl = searchParams.get("roomId")
+
   const [isFollowing, setIsFollowing] = useState(false)
   const [likes, setLikes] = useState(156)
   const [hasLiked, setHasLiked] = useState(false)
+  const [roomId, setRoomId] = useState(roomIdFromUrl || "")
+  const [isWatching, setIsWatching] = useState(false)
+  const [logs, setLogs] = useState<string[]>([])
+  // --- FIX: State now holds the MediaStream object for declarative rendering ---
+  const [remoteFeeds, setRemoteFeeds] = useState<{ [key: string]: { stream: MediaStream } }>({})
+  const [currentViewers, setCurrentViewers] = useState(1234)
+  const [connectionState, setConnectionState] = useState<string>("disconnected")
+  const [isAudioMuted, setIsAudioMuted] = useState(true) // Muted by default
 
-  const otherStreams = [
-    {
-      id: 1,
-      title: "Cooking Masterclass",
-      streamer: "ChefMaster",
-      viewers: 567,
-      category: "Cooking",
-      thumbnail: "/images/cooking-stream.png",
-    },
-    {
-      id: 2,
-      title: "Music Production",
-      streamer: "BeatMaker",
-      viewers: 890,
-      category: "Music",
-      thumbnail: "/images/music-production.png",
-    },
-    {
-      id: 3,
-      title: "Art Workshop",
-      streamer: "ArtistLife",
-      viewers: 345,
-      category: "Art",
-      thumbnail: "/images/art-workshop.png",
-    },
-    {
-      id: 4,
-      title: "Tech Talk",
-      streamer: "TechGuru",
-      viewers: 234,
-      category: "Technology",
-      thumbnail: "/images/tech-talk.png",
-    },
-    {
-      id: 5,
-      title: "Fitness Session",
-      streamer: "FitCoach",
-      viewers: 123,
-      category: "Fitness",
-      thumbnail: "/images/fitness-session.png",
-    },
-  ]
+  const remoteVideosRef = useRef<HTMLDivElement>(null)
+  const logsRef = useRef<HTMLDivElement>(null)
+
+  // WebRTC and Janus related refs
+  const janusSessionIdRef = useRef<string | null>(null)
+  const mainVideoRoomHandleRef = useRef<string | null>(null)
+  const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const stopPollingRef = useRef(false)
+  const remoteFeedsRef = useRef<{ [key: string]: any }>({})
+
+  const FLASK_PROXY_URL = "https://superfan.alterwork.in/janus_proxy"
+
+  // Auto-scroll logs
+  useEffect(() => {
+    if (logsRef.current) {
+      logsRef.current.scrollTop = logsRef.current.scrollHeight
+    }
+  }, [logs])
+
+  // Start watching automatically if room ID is in URL
+  useEffect(() => {
+    if (roomIdFromUrl && !isWatching) {
+      handleWatchStream()
+    }
+  }, [roomIdFromUrl])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (isWatching || janusSessionIdRef.current) {
+        stopWatchingCleanup()
+      }
+    }
+  }, [])
+
+  const log = (message: string) => {
+    console.log(message)
+    const timestamp = new Date().toLocaleTimeString()
+    const logMessage = `[${timestamp}] ${typeof message === "object" ? JSON.stringify(message) : message}`
+    setLogs((prev) => [...prev, logMessage])
+  }
+
+  const sendToProxy = async (path: string, payload: any, method = "POST") => {
+    log(`Sending to proxy (${method}): ${path} with payload: ${JSON.stringify(payload)}`)
+    try {
+      const response = await fetch(FLASK_PROXY_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ path: path, payload: payload, method: method }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error, not JSON" }))
+        log(`Proxy Error: ${response.status} - ${errorData.error?.reason || response.statusText}`)
+        throw new Error(`Proxy error: ${response.status} - ${errorData.error?.reason || response.statusText}`)
+      }
+
+      const data = await response.json()
+      log(`Received from proxy: ${JSON.stringify(data)}`)
+      return data
+    } catch (error: any) {
+      log(`Error in sendToProxy: ${error.message}`)
+      throw error
+    }
+  }
+
+  const startKeepAlive = () => {
+    if (keepAliveIntervalRef.current) clearInterval(keepAliveIntervalRef.current)
+    keepAliveIntervalRef.current = setInterval(async () => {
+      if (janusSessionIdRef.current) {
+        try {
+          await sendToProxy(`/${janusSessionIdRef.current}`, {
+            janus: "keepalive",
+            transaction: `keepalive_${Date.now()}`,
+          })
+          log("Sent keepalive")
+        } catch (error: any) {
+          log(`Keepalive failed: ${error.message}. Stopping keepalive.`)
+          stopWatchingCleanup()
+        }
+      }
+    }, 30000)
+  }
+
+  const createJanusSession = async () => {
+    const transaction = `createsession_${Date.now()}`
+    const response = await sendToProxy("", { janus: "create", transaction: transaction })
+    if (response && response.janus === "success") {
+      janusSessionIdRef.current = response.data.id
+      log(`Janus session created: ${janusSessionIdRef.current}`)
+      startKeepAlive()
+      return janusSessionIdRef.current
+    }
+    throw new Error("Failed to create Janus session")
+  }
+
+  const attachVideoRoomPlugin = async (isMainHandle = true) => {
+    if (!janusSessionIdRef.current) throw new Error("Janus session not available")
+    const transaction = `attachplugin_${Date.now()}`
+    const response = await sendToProxy(`/${janusSessionIdRef.current}`, {
+      janus: "attach",
+      plugin: "janus.plugin.videoroom",
+      transaction: transaction,
+    })
+    if (response && response.janus === "success") {
+      const handleId = response.data.id
+      log(`VideoRoom plugin attached: ${handleId}`)
+      if (isMainHandle) {
+        mainVideoRoomHandleRef.current = handleId
+        startSessionLongPoll()
+      }
+      return handleId
+    }
+    throw new Error("Failed to attach VideoRoom plugin")
+  }
+
+  const startSessionLongPoll = async () => {
+    if (stopPollingRef.current || !janusSessionIdRef.current) return
+    log("Starting session long-poll GET...")
+    try {
+      const response = await sendToProxy(`/${janusSessionIdRef.current}?maxev=1&rid=${Date.now()}`, null, "GET")
+      if (response) {
+        handleAsyncJanusEvent(response)
+      }
+    } catch (error: any) {
+      log(`Error in session long-poll: ${error.message}`)
+      if (janusSessionIdRef.current && !stopPollingRef.current) {
+        setTimeout(startSessionLongPoll, 1000)
+      }
+      return
+    }
+    if (janusSessionIdRef.current && !stopPollingRef.current) {
+      startSessionLongPoll()
+    }
+  }
+
+  const joinRoomAsSubscriber = async (roomId: string) => {
+    if (!mainVideoRoomHandleRef.current) throw new Error("Main plugin handle not available")
+    const transaction = `join_${Date.now()}`
+    const joinMsg = {
+      janus: "message",
+      transaction: transaction,
+      body: {
+        request: "join",
+        ptype: "publisher",
+        room: Number.parseInt(roomId),
+        display: "Viewer_" + Date.now().toString().slice(-4),
+      },
+    }
+
+    const response = await sendToProxy(`/${janusSessionIdRef.current}/${mainVideoRoomHandleRef.current}`, joinMsg)
+    if (response && (response.janus === "ack" || response.janus === "success")) {
+      log("Join as subscriber request sent. Waiting for 'joined' event via long-poll.")
+      setIsWatching(true)
+    } else {
+      throw new Error(`Failed to send join room message: ${response?.plugindata?.data?.error || "Unknown error"}`)
+    }
+  }
+
+  const handleAsyncJanusEvent = (event: any) => {
+    log(`Async Janus Event: ${JSON.stringify(event)}`)
+
+    if (event.janus === "trickle" && event.sender && event.candidate) {
+      const feedHandleId = event.sender
+      handleRemoteIceForFeed(feedHandleId, event.candidate)
+      return
+    }
+
+    if (!event.plugindata || !event.plugindata.data) {
+      return
+    }
+
+    const data = event.plugindata.data
+    const videoroomEvent = data.videoroom
+
+    if (event.sender === mainVideoRoomHandleRef.current) {
+      if (videoroomEvent === "joined") {
+        log(`Successfully joined room ${data.room}. My ID: ${data.id}`)
+        setConnectionState("connected")
+        if (data.publishers && data.publishers.length > 0) {
+          log(`Found publishers: ${JSON.stringify(data.publishers)}`)
+          data.publishers.forEach((publisher: any) =>
+            subscribeToPublisherFeed(data.room, publisher.id, publisher.display),
+          )
+        } else {
+          log("No publishers in the room yet.")
+        }
+      } else if (videoroomEvent === "event") {
+        if (data.publishers && data.publishers.length > 0) {
+          log(`New publishers announced: ${JSON.stringify(data.publishers)}`)
+          data.publishers.forEach((publisher: any) => {
+            if (!remoteFeedsRef.current[publisher.id]) {
+              subscribeToPublisherFeed(data.room, publisher.id, publisher.display)
+            }
+          })
+        } else if (data.unpublished) {
+          const publisherId = data.unpublished
+          log(`Publisher ${publisherId} unpublished.`)
+          removeRemoteFeed(publisherId)
+        } else if (data.leaving) {
+          log(`Participant ${data.leaving} leaving.`)
+          if (remoteFeedsRef.current[data.leaving]) {
+            removeRemoteFeed(data.leaving)
+          }
+        } else if (data.error_code) {
+          log(`VideoRoom event error on main handle: ${data.error} (Code: ${data.error_code})`)
+          alert(`An error occurred: ${data.error}. The room may no longer exist.`)
+          stopWatchingCleanup()
+        }
+      }
+    } else {
+      // Handle events for individual feed handles
+      const feedHandleId = event.sender
+      const publisherId = Object.keys(remoteFeedsRef.current).find(
+        (pid) => remoteFeedsRef.current[pid].handleId === feedHandleId,
+      )
+
+      if (publisherId) {
+        if (videoroomEvent === "attached" && event.jsep && event.jsep.type === "offer") {
+          log(`Received JSEP offer for publisher ${publisherId} (feed ID) on handle ${feedHandleId}`)
+          handleRemoteOffer(publisherId, event.jsep)
+        } else if (videoroomEvent === "event") {
+          if (data.error_code) {
+            log(`VideoRoom event error on feed handle ${publisherId}: ${data.error} (Code: ${data.error_code})`)
+            removeRemoteFeed(publisherId)
+          }
+        }
+      }
+    }
+  }
+
+  const subscribeToPublisherFeed = async (roomId: string, publisherId: string, display: string) => {
+    if (remoteFeedsRef.current[publisherId]) {
+      log(`Already subscribed or subscribing to ${publisherId}`)
+      return
+    }
+    log(`Subscribing to publisher: ${publisherId} (Display: ${display}) in room ${roomId}`)
+
+    try {
+      const feedHandleId = await attachVideoRoomPlugin(false)
+      remoteFeedsRef.current[publisherId] = {
+        pc: null,
+        handleId: feedHandleId,
+        display: display,
+        iceQueue: [],
+      }
+
+      const subscribeMsg = {
+        janus: "message",
+        transaction: `subscribe_${publisherId}_${Date.now()}`,
+        body: { request: "join", ptype: "subscriber", room: Number.parseInt(roomId), feed: publisherId },
+      }
+
+      const response = await sendToProxy(`/${janusSessionIdRef.current}/${feedHandleId}`, subscribeMsg)
+      if (response && response.jsep && response.jsep.type === "offer") {
+        log(`Subscription join sent. Got JSEP offer directly for publisher ${publisherId}`)
+        handleRemoteOffer(publisherId, response.jsep)
+      } else if (response && (response.janus === "ack" || response.janus === "success")) {
+        log(`Subscription join request for ${publisherId} acknowledged. Waiting for async JSEP offer.`)
+      } else {
+        log(`Failed to send subscribe message for ${publisherId}: ${response?.error?.reason}`)
+        delete remoteFeedsRef.current[publisherId]
+        if (feedHandleId) {
+          sendToProxy(`/${janusSessionIdRef.current}/${feedHandleId}`, {
+            janus: "detach",
+            transaction: `detachfailsub_${Date.now()}`,
+          }).catch((e) => log(`Error detaching failed feed handle: ${e}`))
+        }
+      }
+    } catch (error: any) {
+      log(`Error subscribing to feed ${publisherId}: ${error.message}`)
+      if (remoteFeedsRef.current[publisherId] && remoteFeedsRef.current[publisherId].handleId) {
+        sendToProxy(`/${janusSessionIdRef.current}/${remoteFeedsRef.current[publisherId].handleId}`, {
+          janus: "detach",
+          transaction: `detacherr_${Date.now()}`,
+        }).catch((e) => log(`Error detaching failed feed handle: ${e}`))
+      }
+      delete remoteFeedsRef.current[publisherId]
+    }
+  }
+
+  const handleRemoteOffer = async (publisherId: string, offerSdp: any) => {
+    if (!remoteFeedsRef.current[publisherId]) return
+    const feedInfo = remoteFeedsRef.current[publisherId]
+    log(`Handling remote JSEP offer for publisher ${publisherId}`)
+
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] })
+    feedInfo.pc = pc
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        sendToProxy(`/${janusSessionIdRef.current}/${feedInfo.handleId}`, {
+          janus: "trickle",
+          candidate: event.candidate.toJSON(),
+          transaction: `trickle_${publisherId}_${Date.now()}`,
+        }).catch((err) => log(`Error sending ICE for ${publisherId}: ${err.message}`))
+      }
+    }
+
+    pc.oniceconnectionstatechange = () => {
+      log(`ICE connection state for ${publisherId}: ${pc.iceConnectionState}`)
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
+        log(`WebRTC connection established for ${publisherId}`)
+      }
+      if (
+        pc.iceConnectionState === "failed" ||
+        pc.iceConnectionState === "disconnected" ||
+        pc.iceConnectionState === "closed"
+      ) {
+        log(`WebRTC connection failed for ${publisherId}`)
+        removeRemoteFeed(publisherId)
+      }
+    }
+
+    pc.ontrack = (event) => {
+      log(`Remote track received for publisher ${publisherId}`)
+      // --- FIX: Update state with the stream, let React handle the DOM ---
+      if (event.streams && event.streams[0]) {
+        setRemoteFeeds((prev) => ({
+          ...prev,
+          [publisherId]: { stream: event.streams[0] },
+        }))
+        // --- FIX: Remove all manual DOM manipulation ---
+      }
+    }
+
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(offerSdp))
+      log(`Remote offer for ${publisherId} set.`)
+      const answer = await pc.createAnswer()
+      await pc.setLocalDescription(answer)
+      log(`Local answer for ${publisherId} created and set.`)
+
+      const startMsg = {
+        janus: "message",
+        transaction: `start_${publisherId}_${Date.now()}`,
+        body: { request: "start" },
+        jsep: answer,
+      }
+      await sendToProxy(`/${janusSessionIdRef.current}/${feedInfo.handleId}`, startMsg)
+      log(`'start' message with answer sent for ${publisherId}.`)
+
+      while (feedInfo.iceQueue && feedInfo.iceQueue.length > 0) {
+        const candidate = feedInfo.iceQueue.shift()
+        log(`Adding queued remote ICE candidate for ${publisherId}.`)
+        await pc.addIceCandidate(new RTCIceCandidate(candidate))
+      }
+    } catch (error: any) {
+      log(`Error handling remote offer for ${publisherId}: ${error.message}`)
+      removeRemoteFeed(publisherId)
+    }
+  }
+
+  const handleRemoteIceForFeed = (feedHandleId: string, candidateData: any) => {
+    const publisherId = Object.keys(remoteFeedsRef.current).find(
+      (pid) => remoteFeedsRef.current[pid].handleId === feedHandleId,
+    )
+    if (publisherId && remoteFeedsRef.current[publisherId]) {
+      const feedInfo = remoteFeedsRef.current[publisherId]
+      if (feedInfo.pc && feedInfo.pc.remoteDescription) {
+        feedInfo.pc
+          .addIceCandidate(new RTCIceCandidate(candidateData))
+          .catch((e: any) => log(`Error adding remote ICE for ${publisherId}: ${e}`))
+      } else {
+        feedInfo.iceQueue = feedInfo.iceQueue || []
+        feedInfo.iceQueue.push(candidateData)
+      }
+    }
+  }
+
+  const removeRemoteFeed = (publisherId: string) => {
+    log(`Removing feed for publisher ${publisherId}`)
+    const feedInfo = remoteFeedsRef.current[publisherId]
+    if (feedInfo) {
+      if (feedInfo.pc) feedInfo.pc.close()
+      if (feedInfo.handleId && janusSessionIdRef.current) {
+        sendToProxy(`/${janusSessionIdRef.current}/${feedInfo.handleId}`, {
+          janus: "detach",
+          transaction: `detach_${publisherId}_${Date.now()}`,
+        }).catch((err) => log(`Error detaching feed handle ${feedInfo.handleId}: ${err.message}`))
+      }
+      delete remoteFeedsRef.current[publisherId]
+    }
+
+    // --- FIX: State update is enough to remove the video from the UI ---
+    setRemoteFeeds((prev) => {
+      const newFeeds = { ...prev }
+      delete newFeeds[publisherId]
+      return newFeeds
+    })
+
+    // --- FIX: Remove the problematic manual DOM removal ---
+  }
+
+  const handleWatchStream = async () => {
+    if (!roomId) {
+      alert("Please enter a valid Room ID from the streamer.")
+      return
+    }
+    log(`Attempting to watch stream in room: ${roomId}`)
+    stopPollingRef.current = false
+
+    try {
+      await createJanusSession()
+      await attachVideoRoomPlugin(true)
+      await joinRoomAsSubscriber(roomId)
+    } catch (error: any) {
+      log(`Error watching stream: ${error.message}`)
+      alert(`Error watching stream: ${error.message}`)
+      stopWatchingCleanup()
+    }
+  }
+
+  const stopWatchingCleanup = () => {
+    log("Initiating cleanup...")
+    stopPollingRef.current = true
+
+    Object.keys(remoteFeedsRef.current).forEach((publisherId) => {
+      removeRemoteFeed(publisherId)
+    })
+    remoteFeedsRef.current = {}
+
+    const cleanupPromises = []
+    if (mainVideoRoomHandleRef.current && janusSessionIdRef.current) {
+      cleanupPromises.push(
+        sendToProxy(`/${janusSessionIdRef.current}/${mainVideoRoomHandleRef.current}`, {
+          janus: "detach",
+          transaction: `detachmain_${Date.now()}`,
+        }).catch((err) => log(`Error detaching main handle: ${err.message}`)),
+      )
+    }
+    if (janusSessionIdRef.current) {
+      cleanupPromises.push(
+        sendToProxy(`/${janusSessionIdRef.current}`, {
+          janus: "destroy",
+          transaction: `destroysession_${Date.now()}`,
+        }).catch((err) => log(`Error destroying session: ${err.message}`)),
+      )
+    }
+
+    Promise.all(cleanupPromises).finally(() => {
+      if (keepAliveIntervalRef.current) {
+        clearInterval(keepAliveIntervalRef.current)
+        keepAliveIntervalRef.current = null
+      }
+
+      janusSessionIdRef.current = null
+      mainVideoRoomHandleRef.current = null
+      setIsWatching(false)
+
+      // --- FIX: Clear the state, React will handle the UI ---
+      setRemoteFeeds({})
+      log("Watching stopped and resources cleaned up.")
+    })
+  }
 
   const handleLike = () => {
     if (!hasLiked) {
       setLikes((prev) => prev + 1)
       setHasLiked(true)
     }
+  }
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) {
+      return (num / 1000000).toFixed(1) + "M"
+    }
+    if (num >= 1000) {
+      return (num / 1000).toFixed(1) + "K"
+    }
+    return num.toString()
   }
 
   return (
@@ -71,91 +533,155 @@ export default function ViewerPage() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-120px)]">
           {/* Left Column - Main Content */}
           <div className="lg:col-span-3 flex flex-col gap-2">
-            {/* Video Section */}
-            <Card className="border-orange-200 dark:border-orange-800">
-              <CardContent className="p-0">
-                <div className="relative bg-black rounded-t-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
-                  <img src="/images/gaming-stream-1.png" alt="Live stream" className="w-full h-full object-cover" />
-                  <div className="absolute top-4 left-4">
-                    <Badge variant="destructive" className="text-sm">
-                      <div className="w-2 h-2 bg-white rounded-full mr-2 animate-pulse"></div>
-                      LIVE
-                    </Badge>
+            {/* Room ID Input */}
+            {!roomIdFromUrl && (
+              <Card className="border-orange-200 dark:border-orange-800">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      placeholder="Enter Room ID from streamer"
+                      value={roomId}
+                      onChange={(e) => setRoomId(e.target.value)}
+                      disabled={isWatching}
+                      className="flex-1"
+                    />
+                    {!isWatching ? (
+                      <Button
+                        onClick={handleWatchStream}
+                        className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                      >
+                        <Play className="h-4 w-4 mr-2" />
+                        Watch Stream
+                      </Button>
+                    ) : (
+                      <Button onClick={stopWatchingCleanup} variant="destructive">
+                        <Square className="h-4 w-4 mr-2" />
+                        Stop Watching
+                      </Button>
+                    )}
                   </div>
-                  <div className="absolute top-4 right-4">
-                    <Badge variant="secondary" className="text-sm bg-black/70 text-white">
-                      <Users className="w-3 h-3 mr-1" />
-                      1,234 viewers
-                    </Badge>
-                  </div>
-                  <div className="absolute bottom-4 left-4 bg-black/70 text-white px-3 py-1 rounded text-sm">
-                    Epic Gaming Session - Boss Fight!
-                  </div>
-                </div>
+                </CardContent>
+              </Card>
+            )}
 
-                {/* Channel Details */}
-                <div className="p-6 bg-card">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h1 className="text-xl font-bold mb-3">Epic Gaming Session - Boss Fight!</h1>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
-                        <span className="flex items-center gap-1">
-                          <Eye className="w-4 h-4" />
-                          1,234 watching
-                        </span>
-                        <span>Started 2 hours ago</span>
-                        <Badge
-                          variant="outline"
-                          className="border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400"
-                        >
-                          Gaming
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <img
-                          src="/images/streamer-avatar.png"
-                          alt="GamerPro123"
-                          className="w-10 h-10 rounded-full border-2 border-orange-300 dark:border-orange-700"
-                        />
-                        <div>
-                          <div className="font-medium">GamerPro123</div>
-                          <div className="text-sm text-muted-foreground">2.4K followers</div>
+            {/* Video Section */}
+            <Card className="flex-1 border-orange-200 dark:border-orange-800">
+              <CardContent className="p-0">
+                <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
+                  {/* --- FIX: Render videos declaratively based on state --- */}
+                  <div ref={remoteVideosRef} className="w-full h-full">
+                    {Object.entries(remoteFeeds).map(([id, feed]) => (
+                      <VideoPlayer key={id} stream={feed.stream} muted={isAudioMuted} />
+                    ))}
+
+                    {!isWatching && (
+                      <div className="absolute inset-0 flex items-center justify-center text-white">
+                        <div className="text-center">
+                          <Play className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                          <p className="text-lg">Enter a Room ID to start watching</p>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant={hasLiked ? "default" : "outline"}
-                        size="sm"
-                        onClick={handleLike}
-                        disabled={hasLiked}
-                        className={
-                          hasLiked
-                            ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-                            : "hover:bg-orange-50 dark:hover:bg-orange-950"
-                        }
-                      >
-                        <Heart className={`w-4 h-4 mr-1 ${hasLiked ? "fill-current" : ""}`} />
-                        {likes}
-                      </Button>
-                      <Button variant="outline" size="sm" className="hover:bg-orange-50 dark:hover:bg-orange-950">
-                        <Share className="w-4 h-4 mr-1" />
-                        Share
-                      </Button>
-                      <Button
-                        variant={isFollowing ? "secondary" : "default"}
-                        onClick={() => setIsFollowing(!isFollowing)}
-                        className={
-                          !isFollowing
-                            ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-                            : ""
-                        }
-                      >
-                        {isFollowing ? "Following" : "Follow"}
-                      </Button>
+                    )}
+                    {isWatching && Object.keys(remoteFeeds).length === 0 && (
+                      <div className="absolute inset-0 flex items-center justify-center text-white">
+                        <div className="text-center">
+                          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                          <p className="text-lg">Connecting to stream...</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  {isWatching && (
+                    <>
+                      <div className="absolute top-4 left-4">
+                        <Badge variant="destructive" className="text-sm">
+                          <div className="w-2 h-2 bg-white rounded-full mr-2 animate-pulse"></div>
+                          LIVE
+                        </Badge>
+                      </div>
+                      <div className="absolute top-4 left-20">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setIsAudioMuted(!isAudioMuted)}
+                          className="bg-black/70 text-white hover:bg-black/90"
+                        >
+                          {isAudioMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                      <div className="absolute top-4 right-4">
+                        <Badge variant="secondary" className="text-sm bg-black/70 text-white">
+                          <Users className="w-3 h-3 mr-1" />
+                          {formatNumber(currentViewers)} viewers
+                        </Badge>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Stream Details */}
+                {isWatching && (
+                  <div className="p-6 bg-card">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h1 className="text-xl font-bold mb-3">Live Stream - Room {roomId}</h1>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
+                          <span className="flex items-center gap-1">
+                            <Eye className="w-4 h-4" />
+                            {formatNumber(currentViewers)} watching
+                          </span>
+                          <span>Live now</span>
+                          <Badge
+                            variant="outline"
+                            className="border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400"
+                          >
+                            Live Stream
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-orange-600 to-orange-500 flex items-center justify-center text-white font-bold">
+                            S
+                          </div>
+                          <div>
+                            <div className="font-medium">Streamer</div>
+                            <div className="text-sm text-muted-foreground">Broadcasting live</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          variant={hasLiked ? "default" : "outline"}
+                          size="sm"
+                          onClick={handleLike}
+                          disabled={hasLiked}
+                          className={
+                            hasLiked
+                              ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                              : "hover:bg-orange-50 dark:hover:bg-orange-950"
+                          }
+                        >
+                          <Heart className={`w-4 h-4 mr-1 ${hasLiked ? "fill-current" : ""}`} />
+                          {likes}
+                        </Button>
+                        <Button variant="outline" size="sm" className="hover:bg-orange-50 dark:hover:bg-orange-950">
+                          <Share className="w-4 h-4 mr-1" />
+                          Share
+                        </Button>
+                        <Button
+                          variant={isFollowing ? "secondary" : "default"}
+                          onClick={() => setIsFollowing(!isFollowing)}
+                          className={
+                            !isFollowing
+                              ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                              : ""
+                          }
+                        >
+                          {isFollowing ? "Following" : "Follow"}
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
 
@@ -170,73 +696,56 @@ export default function ViewerPage() {
             </Card>
           </div>
 
-          {/* Right Column - Other Streams */}
+          {/* Right Column - Logs and Info */}
           <div className="space-y-4">
+            {/* Connection Status */}
             <Card className="border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Other Live Streams</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {otherStreams.map((stream) => (
-                  <div key={stream.id} className="group cursor-pointer">
-                    <div className="relative mb-2">
-                      <img
-                        src={stream.thumbnail || "/placeholder.svg"}
-                        alt={stream.title}
-                        className="w-full h-24 object-cover rounded-lg group-hover:opacity-80 transition-opacity border border-orange-200 dark:border-orange-800"
-                      />
-                      <div className="absolute top-2 left-2">
-                        <Badge variant="destructive" className="text-xs">
-                          <div className="w-1 h-1 bg-white rounded-full mr-1"></div>
-                          LIVE
-                        </Badge>
-                      </div>
-                      <div className="absolute top-2 right-2">
-                        <Badge variant="secondary" className="text-xs bg-black/70 text-white">
-                          {stream.viewers}
-                        </Badge>
-                      </div>
-                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button size="sm" variant="secondary" className="bg-orange-600 hover:bg-orange-700 text-white">
-                          <Play className="w-4 h-4 mr-1" />
-                          Watch
-                        </Button>
-                      </div>
-                    </div>
-                    <div>
-                      <h4 className="font-medium text-sm line-clamp-2 group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors">
-                        {stream.title}
-                      </h4>
-                      <p className="text-xs text-muted-foreground">{stream.streamer}</p>
-                      <Badge
-                        variant="outline"
-                        className="text-xs mt-1 border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400"
-                      >
-                        {stream.category}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            {/* Recommended Categories */}
-            <Card className="border-orange-200 dark:border-orange-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Browse Categories</CardTitle>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <Wifi className="h-5 w-5 text-orange-500" />
+                  Connection Status
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {["Gaming", "Music", "Art", "Cooking", "Tech", "Sports"].map((category) => (
-                    <Button
-                      key={category}
-                      variant="ghost"
-                      className="w-full justify-start text-sm hover:bg-orange-50 dark:hover:bg-orange-950 hover:text-orange-600 dark:hover:text-orange-400"
-                    >
-                      {category}
-                    </Button>
-                  ))}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Status</span>
+                    <Badge variant={isWatching ? "default" : "secondary"}>
+                      {isWatching ? "Connected" : "Disconnected"}
+                    </Badge>
+                  </div>
+                  {roomId && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Room ID</span>
+                      <span className="text-sm font-mono">{roomId}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Viewers</span>
+                    <span className="text-sm font-bold text-orange-600">{formatNumber(currentViewers)}</span>
+                  </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Stream Logs */}
+            <Card className="border-orange-200 dark:border-orange-800">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Connection Logs</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <ScrollArea className="h-96 p-4" ref={logsRef}>
+                  <div className="space-y-1">
+                    {logs.map((log, index) => (
+                      <p key={index} className="text-xs text-muted-foreground font-mono break-words">
+                        {log}
+                      </p>
+                    ))}
+                    {logs.length === 0 && (
+                      <p className="text-xs text-muted-foreground">No logs yet. Enter a room ID to start watching.</p>
+                    )}
+                  </div>
+                </ScrollArea>
               </CardContent>
             </Card>
           </div>

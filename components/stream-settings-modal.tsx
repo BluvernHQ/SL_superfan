@@ -17,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CalendarIcon, Copy, Check } from "lucide-react"
+import { CalendarIcon } from "lucide-react"
 import { format } from "date-fns"
 
 interface StreamSettingsModalProps {
@@ -32,15 +32,6 @@ export function StreamSettingsModal({ open, onOpenChange }: StreamSettingsModalP
   const [scheduleDate, setScheduleDate] = useState<Date>()
   const [enableChat, setEnableChat] = useState(true)
   const [isScheduled, setIsScheduled] = useState(false)
-  const [copied, setCopied] = useState(false)
-
-  const streamUrl = "https://streamapp.com/live/user123"
-
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(streamUrl)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
 
   const handleStartLive = () => {
     // Redirect to streamer page
@@ -129,17 +120,6 @@ export function StreamSettingsModal({ open, onOpenChange }: StreamSettingsModalP
           <div className="flex items-center space-x-2">
             <Switch id="chat" checked={enableChat} onCheckedChange={setEnableChat} />
             <Label htmlFor="chat">Enable Chat</Label>
-          </div>
-
-          {/* Share Link */}
-          <div className="space-y-2">
-            <Label>Share Link</Label>
-            <div className="flex space-x-2">
-              <Input value={streamUrl} readOnly />
-              <Button variant="outline" onClick={handleCopyLink}>
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              </Button>
-            </div>
           </div>
         </div>
 

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Wifi, Activity, Settings, Mic, MicOff, Video, VideoOff, Play, Square } from "lucide-react"
+import { Wifi, Activity, Settings, Mic, MicOff, Video, VideoOff, Play, Square, Copy, Check } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { ViewerChart } from "@/components/viewer-chart"
 import { auth } from "@/lib/firebase"
@@ -27,6 +27,7 @@ export default function StreamerPage() {
   const [isStreaming, setIsStreaming] = useState(false)
   const [firebaseUid, setFirebaseUid] = useState<string | null>(null)
   const [isRecording, setIsRecording] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const logsRef = useRef<HTMLDivElement>(null)
@@ -595,6 +596,16 @@ export default function StreamerPage() {
     }
   }
 
+  const handleCopyStreamUrl = () => {
+    if (createdRoomId) {
+      const streamUrl = `${window.location.origin}/viewer?roomId=${createdRoomId}`
+      navigator.clipboard.writeText(streamUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+      log(`Stream URL copied: ${streamUrl}`)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -679,6 +690,16 @@ export default function StreamerPage() {
                     <Button onClick={stopStreamingCleanup} variant="destructive">
                       <Square className="h-4 w-4 mr-2" />
                       Stop Streaming
+                    </Button>
+                  )}
+                  {isStreaming && createdRoomId && (
+                    <Button
+                      onClick={handleCopyStreamUrl}
+                      variant="outline"
+                      className="hover:bg-orange-50 dark:hover:bg-orange-950"
+                    >
+                      {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+                      {copied ? "Copied!" : "Copy Stream URL"}
                     </Button>
                   )}
                 </div>
