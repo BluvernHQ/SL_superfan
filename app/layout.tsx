@@ -7,9 +7,9 @@ import { ThemeProvider } from "@/components/theme-provider"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "StreamApp - Stream Your Passion",
+  title: "Superfan - Stream Your Passion",
   description: "Connect with your audience in real-time. Share your creativity, skills, and passion with the world.",
-    generator: 'v0.dev'
+  generator: "v0.dev",
 }
 
 export default function RootLayout({

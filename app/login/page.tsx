@@ -174,7 +174,7 @@ export default function LoginPage() {
             <Play className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-orange-500 bg-clip-text text-transparent mb-2">
-            StreamApp
+            Superfan
           </h1>
           <p className="text-muted-foreground text-lg">Welcome to your streaming platform</p>
           <p className="text-sm text-muted-foreground mt-2">Connect, create, and share your passion with the world</p>
