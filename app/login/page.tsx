@@ -19,6 +19,7 @@ import {
   browserLocalPersistence,
   browserSessionPersistence,
   onAuthStateChanged,
+  updateProfile,
 } from "firebase/auth"
 import { useRouter } from "next/navigation"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -59,6 +60,22 @@ export default function LoginPage() {
     setError(null)
   }
 
+  const validateUsername = (username: string): string | null => {
+    if (!username.trim()) {
+      return "Username is required"
+    }
+    if (username.length < 3) {
+      return "Username must be at least 3 characters long"
+    }
+    if (username.length > 20) {
+      return "Username must be less than 20 characters"
+    }
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      return "Username can only contain letters, numbers, and underscores"
+    }
+    return null
+  }
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -85,6 +102,14 @@ export default function LoginPage() {
     setIsLoading(true)
     setError(null)
 
+    // Validate username
+    const usernameError = validateUsername(formData.username)
+    if (usernameError) {
+      setError(usernameError)
+      setIsLoading(false)
+      return
+    }
+
     // Validate password match
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match")
@@ -94,7 +119,22 @@ export default function LoginPage() {
 
     try {
       // Create user with email and password
-      await createUserWithEmailAndPassword(auth, formData.email, formData.password)
+      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password)
+      const user = userCredential.user
+
+      // Update the user's profile with the username
+      await updateProfile(user, {
+        displayName: formData.username,
+      })
+
+      console.log("User created successfully:", {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+      })
+
+      // Optionally, you can also store additional user data in Firestore here
+      // For now, we're just using the built-in Firebase Auth profile
 
       // Redirect is handled by the auth state change listener
     } catch (error: any) {
@@ -271,7 +311,7 @@ export default function LoginPage() {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="username" className="text-sm font-medium">
-                      Username
+                      Username <span className="text-red-500">*</span>
                     </Label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
@@ -279,13 +319,20 @@ export default function LoginPage() {
                         id="username"
                         name="username"
                         type="text"
-                        placeholder="Choose a username"
+                        placeholder="Choose a unique username"
                         value={formData.username}
                         onChange={handleInputChange}
                         className="pl-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
                         required
+                        minLength={3}
+                        maxLength={20}
+                        pattern="[a-zA-Z0-9_]+"
+                        title="Username can only contain letters, numbers, and underscores"
                       />
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      3-20 characters, letters, numbers, and underscores only
+                    </p>
                   </div>
 
                   <div className="space-y-2">
@@ -322,6 +369,7 @@ export default function LoginPage() {
                         onChange={handleInputChange}
                         className="pl-10 pr-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
                         required
+                        minLength={6}
                       />
                       <Button
                         type="button"

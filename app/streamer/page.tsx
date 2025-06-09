@@ -4,20 +4,18 @@ import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Wifi, Activity, Settings, Mic, MicOff, Video, VideoOff, Play, Square, Circle } from "lucide-react"
+import { Wifi, Activity, Settings, Mic, MicOff, Video, VideoOff, Play, Square } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { ViewerChart } from "@/components/viewer-chart"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
 import { useRouter } from "next/navigation"
+import { LiveChat } from "@/components/live-chat"
 
 export default function StreamerPage() {
   const [isLive, setIsLive] = useState(false)
-  const [isRecording, setIsRecording] = useState(false)
   const [viewers, setViewers] = useState(0)
   const [micEnabled, setMicEnabled] = useState(true)
   const [videoEnabled, setVideoEnabled] = useState(true)
@@ -28,6 +26,7 @@ export default function StreamerPage() {
   const [logs, setLogs] = useState<string[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [firebaseUid, setFirebaseUid] = useState<string | null>(null)
+  const [isRecording, setIsRecording] = useState(false)
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const logsRef = useRef<HTMLDivElement>(null)
@@ -41,9 +40,10 @@ export default function StreamerPage() {
   const myPrivateIdRef = useRef<string | null>(null)
   const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const stopSessionPollingRef = useRef(false)
+  const createdRoomIdRef = useRef<string | null>(null)
 
-  const FLASK_PROXY_URL = "https://superfan.alterwork.in:3001/janus_proxy"
-  const FLASK_SERVER_URL = "https://superfan.alterwork.in:3001/"
+  const FLASK_PROXY_URL = "https://superfan.alterwork.in/janus_proxy"
+  const FLASK_SERVER_URL = "https://superfan.alterwork.in/create_stream"
 
   // Firebase authentication check
   useEffect(() => {
@@ -59,6 +59,13 @@ export default function StreamerPage() {
 
     return () => unsubscribe()
   }, [router])
+
+  // Add this useEffect after the Firebase auth useEffect:
+  useEffect(() => {
+    if (firebaseUid) {
+      testServerConnection()
+    }
+  }, [firebaseUid])
 
   // Auto-scroll logs
   useEffect(() => {
@@ -101,14 +108,30 @@ export default function StreamerPage() {
     try {
       const response = await fetch(FLASK_PROXY_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
         body: JSON.stringify({ path: path, payload: payload, method: method }),
       })
+
+      // Check if response is HTML instead of JSON
+      const contentType = response.headers.get("content-type")
+      if (contentType && contentType.includes("text/html")) {
+        const htmlText = await response.text()
+        log(`Received HTML instead of JSON. Status: ${response.status}`)
+        log(`HTML content: ${htmlText.substring(0, 200)}...`)
+        throw new Error(
+          `Server returned HTML instead of JSON. Status: ${response.status}. This usually means the Flask proxy server is not running or the endpoint is incorrect.`,
+        )
+      }
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ reason: "Unknown error, not JSON" }))
         log(`Proxy Error: ${response.status} - ${errorData.error?.reason || response.statusText}`)
         throw new Error(`Proxy error: ${response.status} - ${errorData.error?.reason || response.statusText}`)
       }
+
       const data = await response.json()
       log(`Received from proxy: ${JSON.stringify(data)}`)
       return data
@@ -123,20 +146,69 @@ export default function StreamerPage() {
     try {
       const response = await fetch(FLASK_SERVER_URL, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
         body: JSON.stringify({ path: path, payload: payload, method: method }),
       })
+
+      // Check if response is HTML instead of JSON
+      const contentType = response.headers.get("content-type")
+      if (contentType && contentType.includes("text/html")) {
+        const htmlText = await response.text()
+        log(`Handler received HTML instead of JSON. Status: ${response.status}`)
+        log(`HTML content: ${htmlText.substring(0, 200)}...`)
+        throw new Error(
+          `Handler returned HTML instead of JSON. Status: ${response.status}. This usually means the Flask server is not running or the endpoint is incorrect.`,
+        )
+      }
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ reason: "Unknown error, not JSON" }))
         log(`Handler Error: ${response.status} - ${errorData.error?.reason || response.statusText}`)
         throw new Error(`Handler error: ${response.status} - ${errorData.error?.reason || response.statusText}`)
       }
+
       const data = await response.json()
       log(`Received from Handler: ${JSON.stringify(data)}`)
       return data
     } catch (error: any) {
       log(`Error in sendToHandler: ${error.message}`)
       throw error
+    }
+  }
+
+  const testServerConnection = async () => {
+    log("Testing server connection...")
+    try {
+      // Test Flask proxy connection
+      log(`Testing connection to: ${FLASK_PROXY_URL}`)
+      const proxyResponse = await fetch(FLASK_PROXY_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ test: true }),
+      })
+      log(`Proxy server response status: ${proxyResponse.status}`)
+      log(`Proxy server content-type: ${proxyResponse.headers.get("content-type")}`)
+
+      // Test Flask handler connection
+      log(`Testing connection to: ${FLASK_SERVER_URL}`)
+      const handlerResponse = await fetch(FLASK_SERVER_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ test: true }),
+      })
+      log(`Handler server response status: ${handlerResponse.status}`)
+      log(`Handler server content-type: ${handlerResponse.headers.get("content-type")}`)
+    } catch (error: any) {
+      log(`Server connection test failed: ${error.message}`)
     }
   }
 
@@ -216,29 +288,43 @@ export default function StreamerPage() {
             log("Streamer: Remote description (answer) set. Stream is live!")
             setIsStreaming(true)
             setIsLive(true)
-            if (firebaseUid && createdRoomId) {
+
+            // Use the ref value which is set immediately
+            const currentRoomId = createdRoomIdRef.current
+            log(`About to call sendToHandler - firebaseUid: ${firebaseUid}, currentRoomId: ${currentRoomId}`)
+
+            if (firebaseUid && currentRoomId) {
+              log("Calling sendToHandler with create_stream...")
               sendToHandler("create_stream", {
-                room_id: createdRoomId,
+                room_id: currentRoomId,
                 room_description: roomDescription,
                 session_id: janusSessionIdRef.current,
                 UID: firebaseUid,
               })
+                .then(() => {
+                  log("sendToHandler create_stream completed successfully")
+                })
+                .catch((error) => {
+                  log(`sendToHandler create_stream failed: ${error.message}`)
+                })
+            } else {
+              log(`sendToHandler NOT called - missing firebaseUid: ${!!firebaseUid}, currentRoomId: ${!!currentRoomId}`)
+
+              // Let's also check what we have in our refs and state
+              log(`Debug info - createdRoomId state: ${createdRoomId}`)
+              log(`Debug info - janusSessionIdRef: ${janusSessionIdRef.current}`)
+              log(`Debug info - videoRoomPluginHandleRef: ${videoRoomPluginHandleRef.current}`)
             }
           })
           .catch((err) => {
             log(`Streamer: Error setting remote description (answer): ${err.message}`)
             stopStreamingCleanup()
           })
+      } else {
+        log(`JSEP answer received but PeerConnection not in correct state. State: ${pcRef.current?.signalingState}`)
       }
-    }
-
-    if (event.janus === "trickle" && event.candidate) {
-      if (pcRef.current) {
-        log("Streamer: Received remote ICE candidate from Janus (trickle).")
-        pcRef.current
-          .addIceCandidate(new RTCIceCandidate(event.candidate))
-          .catch((e) => log(`Streamer: Error adding remote ICE candidate: ${e.message}`))
-      }
+    } else if (event.jsep) {
+      log(`Received JSEP but not an answer. Type: ${event.jsep.type}`)
     }
   }
 
@@ -284,15 +370,41 @@ export default function StreamerPage() {
         bitrate: 1024000,
       },
     }
+
+    log(`Sending createRoom message: ${JSON.stringify(createMsg)}`)
     const response = await sendToProxy(`/${janusSessionIdRef.current}/${videoRoomPluginHandleRef.current}`, createMsg)
 
+    log(`Full createRoom response: ${JSON.stringify(response, null, 2)}`)
+
+    // Check multiple possible response structures
+    let roomId = null
+
     if (response?.plugindata?.data?.videoroom === "created") {
-      const roomId = response.plugindata.data.room
-      setCreatedRoomId(roomId)
-      log(`Streamer: Room created successfully with ID: ${roomId}`)
+      roomId = response.plugindata.data.room
+      log(`Found room ID in plugindata.data.room: ${roomId}`)
+    } else if (response?.plugindata?.data?.room) {
+      roomId = response.plugindata.data.room
+      log(`Found room ID in plugindata.data.room (alternative): ${roomId}`)
+    } else if (response?.data?.room) {
+      roomId = response.data.room
+      log(`Found room ID in data.room: ${roomId}`)
+    } else if (response?.room) {
+      roomId = response.room
+      log(`Found room ID in root room: ${roomId}`)
+    }
+
+    if (roomId) {
+      const roomIdString = roomId.toString()
+      setCreatedRoomId(roomIdString) // Set state
+      createdRoomIdRef.current = roomIdString // Set ref immediately
+      log(`Streamer: Room created successfully with ID: ${roomIdString} (type: ${typeof roomId})`)
+      log(`createdRoomId state set to: ${roomIdString}`)
+      log(`createdRoomIdRef set to: ${roomIdString}`)
       return roomId
     } else {
       const errorReason = response?.error?.reason || response?.plugindata?.data?.error || "Unknown error creating room"
+      log(`Failed to extract room ID from response. Error: ${errorReason}`)
+      log(`Response structure: ${JSON.stringify(response)}`)
       throw new Error(`Streamer: Failed to create room: ${errorReason}`)
     }
   }
@@ -366,31 +478,6 @@ export default function StreamerPage() {
     }
   }
 
-  const toggleRecording = async (start: boolean) => {
-    if (!videoRoomPluginHandleRef.current || !isStreaming) {
-      log("Cannot change recording state: not streaming or no handle.")
-      return
-    }
-    log(`Sending request to ${start ? "START" : "STOP"} recording...`)
-    const recMsg = {
-      janus: "message",
-      transaction: `rec_${Date.now()}`,
-      body: {
-        request: "configure",
-        record: start,
-        filename: `/root/superfan_complete/recordings_raw/room-${createdRoomId}-rec`,
-      },
-    }
-    try {
-      await sendToProxy(`/${janusSessionIdRef.current}/${videoRoomPluginHandleRef.current}`, recMsg)
-      log(`Recording request sent successfully.`)
-      setIsRecording(start)
-    } catch (error: any) {
-      log(`Failed to send recording request: ${error.message}`)
-      alert(`Failed to ${start ? "start" : "stop"} recording. Check server logs.`)
-    }
-  }
-
   const startStreaming = async () => {
     if (!roomDescription) {
       alert("Please enter a Room Description.")
@@ -409,6 +496,11 @@ export default function StreamerPage() {
       await createJanusSession()
       await attachVideoRoomPlugin()
       const newRoomId = await createRoom(roomDescription)
+
+      // Verify the room ID was set correctly
+      log(`Room creation returned: ${newRoomId}`)
+      log(`createdRoomId state is now: ${createdRoomId}`)
+
       await joinRoomAsPublisher(newRoomId)
     } catch (error: any) {
       log(`Streamer: Error starting stream: ${error.message}`)
@@ -476,7 +568,6 @@ export default function StreamerPage() {
       videoRoomPluginHandleRef.current = null
       setIsStreaming(false)
       setIsLive(false)
-      setIsRecording(false)
       setCreatedRoomId(null)
       myPrivateIdRef.current = null
       setViewers(0)
@@ -512,34 +603,6 @@ export default function StreamerPage() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-120px)]">
           {/* Left Column - Main Content */}
           <div className="lg:col-span-3 flex flex-col gap-4">
-            {/* Stream Setup */}
-            <Card className="border-orange-200 dark:border-orange-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Stream Setup</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="roomDescription">Stream Title</Label>
-                  <Input
-                    id="roomDescription"
-                    value={roomDescription}
-                    onChange={(e) => setRoomDescription(e.target.value)}
-                    placeholder="Enter your stream title"
-                    disabled={isStreaming}
-                    className="border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
-                  />
-                </div>
-                {createdRoomId && (
-                  <div className="bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                    <p className="text-sm">
-                      Room created! Tell viewers to join Room ID:{" "}
-                      <strong className="text-blue-600 dark:text-blue-400">{createdRoomId}</strong>
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
             {/* Video Section */}
             <Card className="flex-1 border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
@@ -603,37 +666,32 @@ export default function StreamerPage() {
             <Card className="border-orange-200 dark:border-orange-800">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2">
-                  <Button
-                    onClick={startStreaming}
-                    disabled={isStreaming || !firebaseUid}
-                    className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-                  >
-                    <Play className="h-4 w-4 mr-2" />
-                    Start Streaming
-                  </Button>
-                  <Button onClick={stopStreamingCleanup} disabled={!isStreaming} variant="destructive">
-                    <Square className="h-4 w-4 mr-2" />
-                    Stop Streaming
-                  </Button>
-                  <Button
-                    onClick={() => toggleRecording(true)}
-                    disabled={!isStreaming || isRecording}
-                    variant="outline"
-                    className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950"
-                  >
-                    <Circle className="h-4 w-4 mr-2" />
-                    Start Recording
-                  </Button>
-                  <Button
-                    onClick={() => toggleRecording(false)}
-                    disabled={!isRecording}
-                    variant="outline"
-                    className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950"
-                  >
-                    <Square className="h-4 w-4 mr-2" />
-                    Stop Recording
-                  </Button>
+                  {!isStreaming ? (
+                    <Button
+                      onClick={startStreaming}
+                      disabled={!firebaseUid}
+                      className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                    >
+                      <Play className="h-4 w-4 mr-2" />
+                      Start Streaming
+                    </Button>
+                  ) : (
+                    <Button onClick={stopStreamingCleanup} variant="destructive">
+                      <Square className="h-4 w-4 mr-2" />
+                      Stop Streaming
+                    </Button>
+                  )}
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Chat Section */}
+            <Card className="h-80 border-orange-200 dark:border-orange-800">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Live Chat</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 h-full">
+                <LiveChat />
               </CardContent>
             </Card>
           </div>
