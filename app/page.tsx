@@ -18,7 +18,7 @@ export default function LandingPage() {
       streamer: "GamerPro123",
       viewers: 1234,
       category: "Gaming",
-      thumbnail: "/placeholder.svg?height=200&width=300",
+      thumbnail: "/images/gaming-stream-1.png",
     },
     {
       id: 2,
@@ -26,7 +26,7 @@ export default function LandingPage() {
       streamer: "ChefMaster",
       viewers: 567,
       category: "Cooking",
-      thumbnail: "/placeholder.svg?height=200&width=300",
+      thumbnail: "/images/cooking-stream.png",
     },
     {
       id: 3,
@@ -34,7 +34,7 @@ export default function LandingPage() {
       streamer: "BeatMaker",
       viewers: 890,
       category: "Music",
-      thumbnail: "/placeholder.svg?height=200&width=300",
+      thumbnail: "/images/music-production.png",
     },
     {
       id: 4,
@@ -42,7 +42,7 @@ export default function LandingPage() {
       streamer: "ArtistLife",
       viewers: 345,
       category: "Art",
-      thumbnail: "/placeholder.svg?height=200&width=300",
+      thumbnail: "/images/art-workshop.png",
     },
   ]
 

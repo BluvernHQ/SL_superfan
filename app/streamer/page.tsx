@@ -79,11 +79,7 @@ export default function StreamerPage() {
               <CardContent className="p-0">
                 <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
                   {videoEnabled ? (
-                    <img
-                      src="/placeholder.svg?height=400&width=700"
-                      alt="Live stream"
-                      className="w-full h-full object-cover"
-                    />
+                    <img src="/images/gaming-stream-1.png" alt="Live stream" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-white">
                       <div className="text-center">

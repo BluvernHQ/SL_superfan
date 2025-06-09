@@ -20,7 +20,7 @@ export default function ViewerPage() {
       streamer: "ChefMaster",
       viewers: 567,
       category: "Cooking",
-      thumbnail: "/placeholder.svg?height=120&width=160",
+      thumbnail: "/images/cooking-stream.png",
     },
     {
       id: 2,
@@ -28,7 +28,7 @@ export default function ViewerPage() {
       streamer: "BeatMaker",
       viewers: 890,
       category: "Music",
-      thumbnail: "/placeholder.svg?height=120&width=160",
+      thumbnail: "/images/music-production.png",
     },
     {
       id: 3,
@@ -36,7 +36,7 @@ export default function ViewerPage() {
       streamer: "ArtistLife",
       viewers: 345,
       category: "Art",
-      thumbnail: "/placeholder.svg?height=120&width=160",
+      thumbnail: "/images/art-workshop.png",
     },
     {
       id: 4,
@@ -44,7 +44,7 @@ export default function ViewerPage() {
       streamer: "TechGuru",
       viewers: 234,
       category: "Technology",
-      thumbnail: "/placeholder.svg?height=120&width=160",
+      thumbnail: "/images/tech-talk.png",
     },
     {
       id: 5,
@@ -52,7 +52,7 @@ export default function ViewerPage() {
       streamer: "FitCoach",
       viewers: 123,
       category: "Fitness",
-      thumbnail: "/placeholder.svg?height=120&width=160",
+      thumbnail: "/images/fitness-session.png",
     },
   ]
 
@@ -75,11 +75,7 @@ export default function ViewerPage() {
             <Card className="border-orange-200 dark:border-orange-800">
               <CardContent className="p-0">
                 <div className="relative bg-black rounded-t-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
-                  <img
-                    src="/placeholder.svg?height=400&width=700"
-                    alt="Live stream"
-                    className="w-full h-full object-cover"
-                  />
+                  <img src="/images/gaming-stream-1.png" alt="Live stream" className="w-full h-full object-cover" />
                   <div className="absolute top-4 left-4">
                     <Badge variant="destructive" className="text-sm">
                       <div className="w-2 h-2 bg-white rounded-full mr-2 animate-pulse"></div>
@@ -117,7 +113,7 @@ export default function ViewerPage() {
                       </div>
                       <div className="flex items-center gap-3">
                         <img
-                          src="/placeholder.svg?height=40&width=40"
+                          src="/images/streamer-avatar.png"
                           alt="GamerPro123"
                           className="w-10 h-10 rounded-full border-2 border-orange-300 dark:border-orange-700"
                         />
