@@ -43,8 +43,8 @@ export default function StreamerPage() {
   const stopSessionPollingRef = useRef(false)
   const createdRoomIdRef = useRef<string | null>(null)
 
-  const FLASK_PROXY_URL = "https://superfan.alterwork.in/janus_proxy"
-  const FLASK_SERVER_URL = "https://superfan.alterwork.in/create_stream"
+  const FLASK_PROXY_URL = "https://superfan.alterwork.in/api/janus_proxy"
+  const FLASK_SERVER_URL = "https://superfan.alterwork.in/api/create_stream"
 
   // Firebase authentication check
   useEffect(() => {

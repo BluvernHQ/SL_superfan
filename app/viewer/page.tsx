@@ -61,7 +61,7 @@ export default function ViewerPage() {
   const stopPollingRef = useRef(false)
   const remoteFeedsRef = useRef<{ [key: string]: any }>({})
 
-  const FLASK_PROXY_URL = "https://superfan.alterwork.in/janus_proxy"
+  const FLASK_PROXY_URL = "https://superfan.alterwork.in/api/janus_proxy"
 
   // Auto-scroll logs
   useEffect(() => {
