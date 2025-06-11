@@ -21,7 +21,7 @@ import {
   onAuthStateChanged,
   updateProfile,
 } from "firebase/auth"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function LoginPage() {
@@ -32,6 +32,9 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [user, setUser] = useState<any>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirectPath = searchParams.get("redirect")
+  const openStreamModal = searchParams.get("openStreamModal")
 
   const [formData, setFormData] = useState({
     email: "",
@@ -44,12 +47,28 @@ export default function LoginPage() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
       if (currentUser) {
-        router.push("/")
+        // Build redirect URL with parameters
+        let redirectUrl = "/"
+        const params = new URLSearchParams()
+
+        if (redirectPath === "stream") {
+          params.set("redirect", "stream")
+        }
+
+        if (openStreamModal === "true") {
+          params.set("openStreamModal", "true")
+        }
+
+        if (params.toString()) {
+          redirectUrl += "?" + params.toString()
+        }
+
+        router.push(redirectUrl)
       }
     })
 
     return () => unsubscribe()
-  }, [router])
+  }, [router, redirectPath, openStreamModal])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
@@ -133,9 +152,6 @@ export default function LoginPage() {
         displayName: user.displayName,
       })
 
-      // Optionally, you can also store additional user data in Firestore here
-      // For now, we're just using the built-in Firebase Auth profile
-
       // Redirect is handled by the auth state change listener
     } catch (error: any) {
       console.error("Signup error:", error)
@@ -186,6 +202,11 @@ export default function LoginPage() {
             <CardTitle className="text-2xl text-center">Welcome Back</CardTitle>
             <CardDescription className="text-center">
               Sign in to your account or create a new one to get started
+              {(redirectPath === "stream" || openStreamModal === "true") && (
+                <span className="block mt-2 text-orange-600 dark:text-orange-400 font-medium">
+                  Sign in to start streaming
+                </span>
+              )}
             </CardDescription>
           </CardHeader>
 

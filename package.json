@@ -18,7 +18,7 @@
     "@radix-ui/react-progress": "latest",
     "@radix-ui/react-scroll-area": "latest",
     "@radix-ui/react-select": "latest",
-    "@radix-ui/react-separator": "^1.0.3",
+    "@radix-ui/react-separator": "latest",
     "@radix-ui/react-slot": "latest",
     "@radix-ui/react-switch": "latest",
     "@radix-ui/react-tabs": "latest",

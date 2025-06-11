@@ -11,8 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Play, Search, Bell, Settings, User, LogOut, Home, Tv } from "lucide-react"
-import { ThemeToggle } from "@/components/theme-toggle"
+import { Play, Search, Settings, User, LogOut, Home, Tv } from "lucide-react"
 import Link from "next/link"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, signOut } from "firebase/auth"
@@ -25,11 +24,13 @@ interface NavigationProps {
 export function Navigation({ onGoLive }: NavigationProps) {
   const [searchQuery, setSearchQuery] = useState("")
   const [user, setUser] = useState<any>(null)
+  const [isAuthChecking, setIsAuthChecking] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
+      setIsAuthChecking(false)
     })
 
     return () => unsubscribe()
@@ -82,13 +83,6 @@ export function Navigation({ onGoLive }: NavigationProps) {
               <Home className="w-4 h-4" />
               <span>Home</span>
             </Link>
-            <Link
-              href="/viewer"
-              className="flex items-center space-x-1 text-sm font-medium hover:text-primary transition-colors"
-            >
-              <Tv className="w-4 h-4" />
-              <span>Browse</span>
-            </Link>
           </div>
 
           {/* Search */}
@@ -106,77 +100,57 @@ export function Navigation({ onGoLive }: NavigationProps) {
 
           {/* Right Side */}
           <div className="flex items-center space-x-4">
-            {/* Go Live Button - only show if user is authenticated */}
-            {user && (
-              <Button
-                onClick={onGoLive}
-                className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-              >
-                <Play className="w-4 h-4 mr-2" />
-                Go Live
-              </Button>
-            )}
-
-            {/* Theme Toggle */}
-            <ThemeToggle />
-
-            {/* Notifications - only show if user is authenticated */}
-            {user && (
-              <Button variant="ghost" size="sm">
-                <Bell className="w-5 h-5" />
-              </Button>
-            )}
-
             {/* User Menu or Login Button */}
-            {user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={user.photoURL || "/images/streamer-avatar.png"} alt="User" />
-                      <AvatarFallback>{getUserInitials()}</AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end" forceMount>
-                  <div className="flex items-center justify-start gap-2 p-2">
-                    <div className="flex flex-col space-y-1 leading-none">
-                      <p className="font-medium">{getUserDisplayName()}</p>
-                      <p className="w-[200px] truncate text-sm text-muted-foreground">{user.email}</p>
+            {!isAuthChecking &&
+              (user ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={user.photoURL || "/images/streamer-avatar.png"} alt="User" />
+                        <AvatarFallback>{getUserInitials()}</AvatarFallback>
+                      </Avatar>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="w-56" align="end" forceMount>
+                    <div className="flex items-center justify-start gap-2 p-2">
+                      <div className="flex flex-col space-y-1 leading-none">
+                        <p className="font-medium">{getUserDisplayName()}</p>
+                        <p className="w-[200px] truncate text-sm text-muted-foreground">{user.email}</p>
+                      </div>
                     </div>
-                  </div>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
-                    <Link href="/streamer" className="flex items-center">
-                      <Tv className="mr-2 h-4 w-4" />
-                      <span>Creator Dashboard</span>
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href={`/profile/${getUserDisplayName()}`} className="flex items-center">
-                      <User className="mr-2 h-4 w-4" />
-                      <span>Profile</span>
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Settings className="mr-2 h-4 w-4" />
-                    <span>Settings</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut}>
-                    <LogOut className="mr-2 h-4 w-4" />
-                    <span>Log out</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : (
-              <Button
-                asChild
-                className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-              >
-                <Link href="/login">Sign In</Link>
-              </Button>
-            )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/streamer" className="flex items-center">
+                        <Tv className="mr-2 h-4 w-4" />
+                        <span>Creator Dashboard</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href={`/profile/${getUserDisplayName()}`} className="flex items-center">
+                        <User className="mr-2 h-4 w-4" />
+                        <span>Profile</span>
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <Settings className="mr-2 h-4 w-4" />
+                      <span>Settings</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={handleSignOut}>
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Log out</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Button
+                  asChild
+                  className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                >
+                  <Link href="/login">Sign In</Link>
+                </Button>
+              ))}
           </div>
         </div>
       </div>

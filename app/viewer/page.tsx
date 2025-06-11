@@ -5,14 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Heart, Share, Users, Eye, Play, Square, Wifi, VolumeX, Volume2 } from "lucide-react"
+import { Heart, Share, Users, Eye, Play, Square, VolumeX, Volume2 } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { LiveChat } from "@/components/live-chat"
+import { ShareModal } from "@/components/share-modal"
 import { useSearchParams } from "next/navigation"
 
-// +++ FIX: Create a separate component to manage the video stream object +++
-const VideoPlayer = ({ stream, muted }: { stream: MediaStream; muted: boolean }) => {
+// Video Player Component
+const VideoPlayer = ({ stream, muted, volume }: { stream: MediaStream; muted: boolean; volume: number }) => {
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
@@ -21,15 +21,14 @@ const VideoPlayer = ({ stream, muted }: { stream: MediaStream; muted: boolean })
     }
   }, [stream])
 
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.volume = volume / 100
+    }
+  }, [volume])
+
   return (
-    <video
-      ref={videoRef}
-      autoPlay
-      playsInline
-      controls={false}
-      muted={muted} // Use the muted prop
-      className="w-full h-full object-cover"
-    />
+    <video ref={videoRef} autoPlay playsInline controls={false} muted={muted} className="w-full h-full object-cover" />
   )
 }
 
@@ -42,17 +41,17 @@ export default function ViewerPage() {
   const [hasLiked, setHasLiked] = useState(false)
   const [roomId, setRoomId] = useState(roomIdFromUrl || "")
   const [isWatching, setIsWatching] = useState(false)
-  const [logs, setLogs] = useState<string[]>([])
-  // --- FIX: State now holds the MediaStream object for declarative rendering ---
   const [remoteFeeds, setRemoteFeeds] = useState<{ [key: string]: { stream: MediaStream } }>({})
   const [currentViewers, setCurrentViewers] = useState(1234)
   const [connectionState, setConnectionState] = useState<string>("disconnected")
   const [isAudioMuted, setIsAudioMuted] = useState(true) // Muted by default
+  const [volume, setVolume] = useState(50) // Volume from 0-100
   const [sidebarStreams, setSidebarStreams] = useState<any[]>([])
   const [isLoadingSidebarStreams, setIsLoadingSidebarStreams] = useState(true)
+  const [showDescription, setShowDescription] = useState(false)
+  const [showShareModal, setShowShareModal] = useState(false)
 
   const remoteVideosRef = useRef<HTMLDivElement>(null)
-  const logsRef = useRef<HTMLDivElement>(null)
 
   // WebRTC and Janus related refs
   const janusSessionIdRef = useRef<string | null>(null)
@@ -62,13 +61,6 @@ export default function ViewerPage() {
   const remoteFeedsRef = useRef<{ [key: string]: any }>({})
 
   const FLASK_PROXY_URL = "https://superfan.alterwork.in/api/janus_proxy"
-
-  // Auto-scroll logs
-  useEffect(() => {
-    if (logsRef.current) {
-      logsRef.current.scrollTop = logsRef.current.scrollHeight
-    }
-  }, [logs])
 
   // Start watching automatically if room ID is in URL
   useEffect(() => {
@@ -88,9 +80,6 @@ export default function ViewerPage() {
 
   const log = (message: string) => {
     console.log(message)
-    const timestamp = new Date().toLocaleTimeString()
-    const logMessage = `[${timestamp}] ${typeof message === "object" ? JSON.stringify(message) : message}`
-    setLogs((prev) => [...prev, logMessage])
   }
 
   const sendToProxy = async (path: string, payload: any, method = "POST") => {
@@ -370,13 +359,11 @@ export default function ViewerPage() {
 
     pc.ontrack = (event) => {
       log(`Remote track received for publisher ${publisherId}`)
-      // --- FIX: Update state with the stream, let React handle the DOM ---
       if (event.streams && event.streams[0]) {
         setRemoteFeeds((prev) => ({
           ...prev,
           [publisherId]: { stream: event.streams[0] },
         }))
-        // --- FIX: Remove all manual DOM manipulation ---
       }
     }
 
@@ -438,14 +425,11 @@ export default function ViewerPage() {
       delete remoteFeedsRef.current[publisherId]
     }
 
-    // --- FIX: State update is enough to remove the video from the UI ---
     setRemoteFeeds((prev) => {
       const newFeeds = { ...prev }
       delete newFeeds[publisherId]
       return newFeeds
     })
-
-    // --- FIX: Remove the problematic manual DOM removal ---
   }
 
   const handleWatchStream = async () => {
@@ -503,8 +487,6 @@ export default function ViewerPage() {
       janusSessionIdRef.current = null
       mainVideoRoomHandleRef.current = null
       setIsWatching(false)
-
-      // --- FIX: Clear the state, React will handle the UI ---
       setRemoteFeeds({})
       log("Watching stopped and resources cleaned up.")
     })
@@ -530,7 +512,7 @@ export default function ViewerPage() {
   const fetchSidebarStreams = async () => {
     try {
       setIsLoadingSidebarStreams(true)
-      const response = await fetch("https://superfan.alterwork.in/get_live", {
+      const response = await fetch("https://superfan.alterwork.in/api/get_live", {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -563,22 +545,27 @@ export default function ViewerPage() {
 
   useEffect(() => {
     fetchSidebarStreams()
-
     // Poll for updates every 60 seconds
     const interval = setInterval(fetchSidebarStreams, 60000)
-
     return () => clearInterval(interval)
   }, [roomId])
+
+  const getStreamUrl = () => {
+    if (roomId) {
+      return `${window.location.origin}/viewer?roomId=${roomId}`
+    }
+    return ""
+  }
 
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
 
       <div className="container mx-auto p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-120px)]">
-          {/* Left Column - Main Content */}
-          <div className="lg:col-span-3 flex flex-col gap-2">
-            {/* Room ID Input */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Main Content Column */}
+          <div className="lg:col-span-3 flex flex-col gap-4">
+            {/* Room ID Input (only show if no roomId in URL) */}
             {!roomIdFromUrl && (
               <Card className="border-orange-200 dark:border-orange-800">
                 <CardContent className="p-4">
@@ -609,14 +596,14 @@ export default function ViewerPage() {
               </Card>
             )}
 
-            {/* Video Section */}
+            {/* Main Video Section */}
             <Card className="flex-1 border-orange-200 dark:border-orange-800">
               <CardContent className="p-0">
                 <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
-                  {/* --- FIX: Render videos declaratively based on state --- */}
+                  {/* Video Player */}
                   <div ref={remoteVideosRef} className="w-full h-full">
                     {Object.entries(remoteFeeds).map(([id, feed]) => (
-                      <VideoPlayer key={id} stream={feed.stream} muted={isAudioMuted} />
+                      <VideoPlayer key={id} stream={feed.stream} muted={isAudioMuted} volume={volume} />
                     ))}
 
                     {!isWatching && (
@@ -636,6 +623,8 @@ export default function ViewerPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Video Overlays */}
                   {isWatching && (
                     <>
                       <div className="absolute top-4 left-4">
@@ -644,7 +633,9 @@ export default function ViewerPage() {
                           LIVE
                         </Badge>
                       </div>
-                      <div className="absolute top-4 left-20">
+
+                      {/* Audio Controls - Moved to bottom right */}
+                      <div className="absolute bottom-4 right-4 flex items-center gap-2">
                         <Button
                           variant="secondary"
                           size="sm"
@@ -653,12 +644,24 @@ export default function ViewerPage() {
                         >
                           {isAudioMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                         </Button>
-                      </div>
-                      <div className="absolute top-4 right-4">
-                        <Badge variant="secondary" className="text-sm bg-black/70 text-white">
-                          <Users className="w-3 h-3 mr-1" />
-                          {formatNumber(currentViewers)} viewers
-                        </Badge>
+
+                        {/* Volume Slider */}
+                        {!isAudioMuted && (
+                          <div className="flex items-center gap-2 bg-black/70 rounded px-2 py-1">
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={volume}
+                              onChange={(e) => setVolume(Number(e.target.value))}
+                              className="w-20 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
+                              style={{
+                                background: `linear-gradient(to right, #ea580c 0%, #ea580c ${volume}%, #4b5563 ${volume}%, #4b5563 100%)`,
+                              }}
+                            />
+                            <span className="text-white text-xs min-w-[2rem]">{volume}%</span>
+                          </div>
+                        )}
                       </div>
                     </>
                   )}
@@ -708,7 +711,13 @@ export default function ViewerPage() {
                           <Heart className={`w-4 h-4 mr-1 ${hasLiked ? "fill-current" : ""}`} />
                           {likes}
                         </Button>
-                        <Button variant="outline" size="sm" className="hover:bg-orange-50 dark:hover:bg-orange-950">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="hover:bg-orange-50 dark:hover:bg-orange-950"
+                          onClick={() => setShowShareModal(true)}
+                          disabled={!isWatching || !roomId}
+                        >
                           <Share className="w-4 h-4 mr-1" />
                           Share
                         </Button>
@@ -730,135 +739,108 @@ export default function ViewerPage() {
               </CardContent>
             </Card>
 
-            {/* Chat Section */}
-            <Card className="h-80 border-orange-200 dark:border-orange-800">
+            {/* Recommended Streams Section */}
+            <Card className="border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Live Chat</CardTitle>
+                <CardTitle className="text-lg">Recommended Streams</CardTitle>
               </CardHeader>
-              <CardContent className="p-0 h-full">
-                <LiveChat />
+              <CardContent className="p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {isLoadingSidebarStreams ? (
+                    // Loading skeleton
+                    Array.from({ length: 3 }).map((_, index) => (
+                      <div key={index} className="flex gap-3 animate-pulse">
+                        <div className="w-20 h-14 bg-muted rounded"></div>
+                        <div className="flex-1">
+                          <div className="h-3 bg-muted rounded mb-1"></div>
+                          <div className="h-2 bg-muted rounded mb-1"></div>
+                          <div className="h-2 bg-muted rounded w-1/2"></div>
+                        </div>
+                      </div>
+                    ))
+                  ) : sidebarStreams.length > 0 ? (
+                    sidebarStreams.map((stream) => (
+                      <div
+                        key={stream.sessionId}
+                        className="flex gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                        onClick={() => window.open(`/viewer?roomId=${stream.roomId}`, "_blank")}
+                      >
+                        <div className="relative">
+                          <img
+                            src={stream.thumbnail || "/placeholder.svg"}
+                            alt={stream.title}
+                            className="w-20 h-14 object-cover rounded"
+                          />
+                          <div className="absolute top-1 left-1">
+                            <Badge variant="destructive" className="text-xs px-1 py-0">
+                              LIVE
+                            </Badge>
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium text-sm line-clamp-2 mb-1">{stream.title}</h4>
+                          <p className="text-xs text-muted-foreground mb-1">{stream.streamer}</p>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Users className="w-3 h-3" />
+                            {formatNumber(stream.viewers)}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="col-span-full text-center py-6">
+                      <Play className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">No other streams available</p>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Right Column - Logs and Info */}
-          <div className="space-y-4">
-            {/* Connection Status */}
-            <Card className="border-orange-200 dark:border-orange-800">
+          {/* Right Column - Chat */}
+          <div className="lg:col-span-1">
+            <Card className="border-orange-200 dark:border-orange-800 h-[calc(100vh-120px)]">
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Wifi className="h-5 w-5 text-orange-500" />
-                  Connection Status
-                </CardTitle>
+                <CardTitle className="text-lg">Live Chat</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Status</span>
-                    <Badge variant={isWatching ? "default" : "secondary"}>
-                      {isWatching ? "Connected" : "Disconnected"}
-                    </Badge>
-                  </div>
-                  {roomId && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Room ID</span>
-                      <span className="text-sm font-mono">{roomId}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Viewers</span>
-                    <span className="text-sm font-bold text-orange-600">{formatNumber(currentViewers)}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Live Streams Sidebar */}
-            <Card className="border-orange-200 dark:border-orange-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Play className="h-5 w-5 text-orange-500" />
-                  Other Live Streams
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <ScrollArea className="h-80">
-                  <div className="p-4 space-y-3">
-                    {isLoadingSidebarStreams ? (
-                      // Loading skeleton
-                      Array.from({ length: 3 }).map((_, index) => (
-                        <div key={index} className="flex gap-3 animate-pulse">
-                          <div className="w-20 h-14 bg-muted rounded"></div>
-                          <div className="flex-1">
-                            <div className="h-3 bg-muted rounded mb-1"></div>
-                            <div className="h-2 bg-muted rounded mb-1"></div>
-                            <div className="h-2 bg-muted rounded w-1/2"></div>
-                          </div>
-                        </div>
-                      ))
-                    ) : sidebarStreams.length > 0 ? (
-                      sidebarStreams.map((stream) => (
-                        <div
-                          key={stream.sessionId}
-                          className="flex gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                          onClick={() => window.open(`/viewer?roomId=${stream.roomId}`, "_blank")}
-                        >
-                          <div className="relative">
-                            <img
-                              src={stream.thumbnail || "/placeholder.svg"}
-                              alt={stream.title}
-                              className="w-20 h-14 object-cover rounded"
-                            />
-                            <div className="absolute top-1 left-1">
-                              <Badge variant="destructive" className="text-xs px-1 py-0">
-                                LIVE
-                              </Badge>
-                            </div>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-sm line-clamp-2 mb-1">{stream.title}</h4>
-                            <p className="text-xs text-muted-foreground mb-1">{stream.streamer}</p>
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <Users className="w-3 h-3" />
-                              {formatNumber(stream.viewers)}
-                            </div>
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-6">
-                        <Play className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                        <p className="text-sm text-muted-foreground">No other streams</p>
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-
-            {/* Stream Logs */}
-            <Card className="border-orange-200 dark:border-orange-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Connection Logs</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <ScrollArea className="h-96 p-4" ref={logsRef}>
-                  <div className="space-y-1">
-                    {logs.map((log, index) => (
-                      <p key={index} className="text-xs text-muted-foreground font-mono break-words">
-                        {log}
-                      </p>
-                    ))}
-                    {logs.length === 0 && (
-                      <p className="text-xs text-muted-foreground">No logs yet. Enter a room ID to start watching.</p>
-                    )}
-                  </div>
-                </ScrollArea>
+              <CardContent className="p-0 h-[calc(100%-70px)]">
+                <LiveChat />
               </CardContent>
             </Card>
           </div>
         </div>
       </div>
+
+      <ShareModal
+        open={showShareModal}
+        onOpenChange={setShowShareModal}
+        streamUrl={getStreamUrl()}
+        streamTitle={`Live Stream - Room ${roomId}`}
+      />
+
+      <style jsx>{`
+        .slider::-webkit-slider-thumb {
+          appearance: none;
+          height: 12px;
+          width: 12px;
+          border-radius: 50%;
+          background: #ea580c;
+          cursor: pointer;
+          border: 2px solid #ffffff;
+          box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+        }
+
+        .slider::-moz-range-thumb {
+          height: 12px;
+          width: 12px;
+          border-radius: 50%;
+          background: #ea580c;
+          cursor: pointer;
+          border: 2px solid #ffffff;
+          box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
+        }
+      `}</style>
     </div>
   )
 }

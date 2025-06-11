@@ -5,20 +5,17 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { CalendarIcon } from "lucide-react"
-import { format } from "date-fns"
+import { Badge } from "@/components/ui/badge"
+import { X } from "lucide-react"
 
 interface StreamSettingsModalProps {
   open: boolean
@@ -28,19 +25,50 @@ interface StreamSettingsModalProps {
 export function StreamSettingsModal({ open, onOpenChange }: StreamSettingsModalProps) {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [category, setCategory] = useState("")
-  const [scheduleDate, setScheduleDate] = useState<Date>()
+  const [tagsInput, setTagsInput] = useState("")
   const [enableChat, setEnableChat] = useState(true)
-  const [isScheduled, setIsScheduled] = useState(false)
+  const [errors, setErrors] = useState<{ title?: string; description?: string }>({})
 
-  const handleStartLive = () => {
-    // Redirect to streamer page
-    window.location.href = "/streamer"
+  // Parse tags from comma-separated input
+  const tags = tagsInput
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter((tag) => tag.length > 0)
+
+  const validateForm = () => {
+    const newErrors: { title?: string; description?: string } = {}
+
+    if (!title.trim()) {
+      newErrors.title = "Stream title is required"
+    }
+
+    if (!description.trim()) {
+      newErrors.description = "Stream description is required"
+    }
+
+    setErrors(newErrors)
+    return Object.keys(newErrors).length === 0
   }
 
-  const handleSave = () => {
-    // Save settings logic here
-    onOpenChange(false)
+  const handleStartLive = () => {
+    if (validateForm()) {
+      // Store stream settings in localStorage or pass to streamer page
+      const streamSettings = {
+        title: title.trim(),
+        description: description.trim(),
+        tags: tags,
+        enableChat,
+      }
+      localStorage.setItem("streamSettings", JSON.stringify(streamSettings))
+
+      // Redirect to streamer page
+      window.location.href = "/streamer"
+    }
+  }
+
+  const removeTag = (indexToRemove: number) => {
+    const newTags = tags.filter((_, index) => index !== indexToRemove)
+    setTagsInput(newTags.join(", "))
   }
 
   return (
@@ -54,65 +82,74 @@ export function StreamSettingsModal({ open, onOpenChange }: StreamSettingsModalP
         <div className="space-y-6 py-4">
           {/* Stream Title */}
           <div className="space-y-2">
-            <Label htmlFor="title">Stream Title</Label>
+            <Label htmlFor="title">
+              Stream Title <span className="text-red-500">*</span>
+            </Label>
             <Input
               id="title"
               placeholder="Enter your stream title"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value)
+                if (errors.title) {
+                  setErrors((prev) => ({ ...prev, title: undefined }))
+                }
+              }}
+              className={errors.title ? "border-red-500" : ""}
             />
+            {errors.title && <p className="text-sm text-red-500">{errors.title}</p>}
           </div>
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
+            <Label htmlFor="description">
+              Description <span className="text-red-500">*</span>
+            </Label>
             <Textarea
               id="description"
               placeholder="Describe what you'll be streaming..."
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => {
+                setDescription(e.target.value)
+                if (errors.description) {
+                  setErrors((prev) => ({ ...prev, description: undefined }))
+                }
+              }}
               rows={3}
+              className={errors.description ? "border-red-500" : ""}
             />
+            {errors.description && <p className="text-sm text-red-500">{errors.description}</p>}
           </div>
 
-          {/* Category */}
+          {/* Tags */}
           <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select a category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="gaming">Gaming</SelectItem>
-                <SelectItem value="music">Music</SelectItem>
-                <SelectItem value="art">Art</SelectItem>
-                <SelectItem value="cooking">Cooking</SelectItem>
-                <SelectItem value="tech">Technology</SelectItem>
-                <SelectItem value="sports">Sports</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+            <Label htmlFor="tags">Tags</Label>
+            <Input
+              id="tags"
+              placeholder="gaming, music, art, cooking (separate with commas)"
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Separate tags with commas. Press Enter or continue typing to create tags.
+            </p>
 
-          {/* Schedule Stream */}
-          <div className="space-y-3">
-            <div className="flex items-center space-x-2">
-              <Switch id="schedule" checked={isScheduled} onCheckedChange={setIsScheduled} />
-              <Label htmlFor="schedule">Schedule Stream</Label>
-            </div>
-
-            {isScheduled && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {scheduleDate ? format(scheduleDate, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <Calendar mode="single" selected={scheduleDate} onSelect={setScheduleDate} initialFocus />
-                </PopoverContent>
-              </Popover>
+            {/* Display parsed tags */}
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {tags.map((tag, index) => (
+                  <Badge key={index} variant="secondary" className="flex items-center gap-1">
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => removeTag(index)}
+                      className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
             )}
           </div>
 
@@ -123,17 +160,12 @@ export function StreamSettingsModal({ open, onOpenChange }: StreamSettingsModalP
           </div>
         </div>
 
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          {!isScheduled && (
-            <Button
-              onClick={handleStartLive}
-              className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-            >
-              Start Instant Live
-            </Button>
-          )}
-          <Button variant="outline" onClick={handleSave}>
-            Save Settings
+        <DialogFooter>
+          <Button
+            onClick={handleStartLive}
+            className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+          >
+            Start Live Stream
           </Button>
         </DialogFooter>
       </DialogContent>

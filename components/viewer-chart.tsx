@@ -1,6 +1,6 @@
 "use client"
 
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts"
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from "recharts"
 
 export function ViewerChart() {
   // Rich sample data with more data points for a better visualization
@@ -20,37 +20,41 @@ export function ViewerChart() {
   ]
 
   return (
-    <div className="h-32 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={sampleData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-          <XAxis
-            dataKey="time"
-            axisLine={false}
-            tickLine={false}
-            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-            interval="preserveStartEnd"
-          />
-          <YAxis hide domain={["dataMin - 50", "dataMax + 50"]} />
-          <Tooltip
-            contentStyle={{
-              backgroundColor: "hsl(var(--card))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: "0.5rem",
-              fontSize: "12px",
-            }}
-            labelStyle={{ color: "hsl(var(--foreground))" }}
-            formatter={(value) => [`${value} viewers`, "Viewers"]}
-          />
-          <Line
-            type="monotone"
-            dataKey="viewers"
-            stroke="#ea580c"
-            strokeWidth={2}
-            dot={{ fill: "#ea580c", strokeWidth: 2, r: 3 }}
-            activeDot={{ r: 5, fill: "#ea580c", stroke: "#fff", strokeWidth: 2 }}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
+    <ResponsiveContainer width="100%" height="100%">
+      <LineChart data={sampleData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+        <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+        <XAxis
+          dataKey="time"
+          axisLine={false}
+          tickLine={false}
+          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          interval="preserveStartEnd"
+        />
+        <YAxis
+          axisLine={false}
+          tickLine={false}
+          tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+          width={30}
+        />
+        <Tooltip
+          contentStyle={{
+            backgroundColor: "hsl(var(--card))",
+            border: "1px solid hsl(var(--border))",
+            borderRadius: "0.5rem",
+            fontSize: "12px",
+          }}
+          labelStyle={{ color: "hsl(var(--foreground))" }}
+          formatter={(value) => [`${value} viewers`, "Viewers"]}
+        />
+        <Line
+          type="monotone"
+          dataKey="viewers"
+          stroke="#ea580c"
+          strokeWidth={2}
+          dot={{ fill: "#ea580c", strokeWidth: 2, r: 3 }}
+          activeDot={{ r: 5, fill: "#ea580c", stroke: "#fff", strokeWidth: 2 }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
   )
 }

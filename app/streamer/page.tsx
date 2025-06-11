@@ -5,14 +5,33 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Wifi, Activity, Settings, Mic, MicOff, Video, VideoOff, Play, Square, Copy, Check } from "lucide-react"
+import {
+  Wifi,
+  Activity,
+  Mic,
+  MicOff,
+  Video,
+  VideoOff,
+  Play,
+  Square,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Share,
+  ThumbsUp,
+  Users,
+  Clock,
+  Calendar,
+} from "lucide-react"
 import { Navigation } from "@/components/navigation"
-import { ViewerChart } from "@/components/viewer-chart"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
 import { useRouter } from "next/navigation"
 import { LiveChat } from "@/components/live-chat"
+import { StreamSettingsModal } from "@/components/stream-settings-modal"
+import { ShareModal } from "@/components/share-modal"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 export default function StreamerPage() {
   const [isLive, setIsLive] = useState(false)
@@ -28,6 +47,19 @@ export default function StreamerPage() {
   const [firebaseUid, setFirebaseUid] = useState<string | null>(null)
   const [isRecording, setIsRecording] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [streamSettings, setStreamSettings] = useState<{
+    title: string
+    description: string
+    tags: string[]
+    enableChat: boolean
+  } | null>(null)
+  const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [showDescription, setShowDescription] = useState(false)
+  const [likes, setLikes] = useState(156)
+  const [hasLiked, setHasLiked] = useState(false)
+  const [streamDuration, setStreamDuration] = useState("00:00:00")
+  const [isLoading, setIsLoading] = useState(false)
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const logsRef = useRef<HTMLDivElement>(null)
@@ -68,12 +100,58 @@ export default function StreamerPage() {
     }
   }, [firebaseUid])
 
+  useEffect(() => {
+    if (firebaseUid) {
+      // Check if stream settings exist
+      const savedSettings = localStorage.getItem("streamSettings")
+      if (savedSettings) {
+        try {
+          const settings = JSON.parse(savedSettings)
+          setStreamSettings(settings)
+          setRoomDescription(settings.title) // Use title as room description
+          log(`Stream settings loaded: ${settings.title}`)
+        } catch (error) {
+          log("Error parsing stream settings, showing modal")
+          setShowSettingsModal(true)
+        }
+      } else {
+        log("No stream settings found, showing modal")
+        setShowSettingsModal(true)
+      }
+    }
+  }, [firebaseUid])
+
   // Auto-scroll logs
   useEffect(() => {
     if (logsRef.current) {
       logsRef.current.scrollTop = logsRef.current.scrollHeight
     }
   }, [logs])
+
+  // Stream duration timer
+  useEffect(() => {
+    let timer: NodeJS.Timeout
+    let startTime: number
+
+    if (isStreaming) {
+      startTime = Date.now()
+      timer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000)
+        const hours = Math.floor(elapsed / 3600)
+          .toString()
+          .padStart(2, "0")
+        const minutes = Math.floor((elapsed % 3600) / 60)
+          .toString()
+          .padStart(2, "0")
+        const seconds = (elapsed % 60).toString().padStart(2, "0")
+        setStreamDuration(`${hours}:${minutes}:${seconds}`)
+      }, 1000)
+    }
+
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+  }, [isStreaming])
 
   // Simulate real-time updates
   useEffect(() => {
@@ -268,6 +346,8 @@ export default function StreamerPage() {
         publishOwnFeed().catch((err) => {
           log(`Error during publishOwnFeed after joined event: ${err.message}`)
           stopStreamingCleanup()
+          // Set loading state to false on error
+          setIsLoading(false)
         })
       } else if (videoroomEvent === "event") {
         if (data.configured === "ok") {
@@ -276,6 +356,8 @@ export default function StreamerPage() {
         if (data.error_code || data.error) {
           log(`Streamer: VideoRoom event error: ${data.error} (Code: ${data.error_code})`)
           stopStreamingCleanup()
+          // Set loading state to false on error
+          setIsLoading(false)
         }
       }
     }
@@ -289,6 +371,8 @@ export default function StreamerPage() {
             log("Streamer: Remote description (answer) set. Stream is live!")
             setIsStreaming(true)
             setIsLive(true)
+            // Set loading state to false when stream is live
+            setIsLoading(false)
 
             // Use the ref value which is set immediately
             const currentRoomId = createdRoomIdRef.current
@@ -320,6 +404,8 @@ export default function StreamerPage() {
           .catch((err) => {
             log(`Streamer: Error setting remote description (answer): ${err.message}`)
             stopStreamingCleanup()
+            // Set loading state to false on error
+            setIsLoading(false)
           })
       } else {
         log(`JSEP answer received but PeerConnection not in correct state. State: ${pcRef.current?.signalingState}`)
@@ -486,6 +572,9 @@ export default function StreamerPage() {
     }
     log(`Streamer: Starting stream for room: "${roomDescription}"`)
 
+    // Set loading state to true
+    setIsLoading(true)
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: micEnabled, video: videoEnabled })
       localStreamRef.current = stream
@@ -507,6 +596,8 @@ export default function StreamerPage() {
       log(`Streamer: Error starting stream: ${error.message}`)
       alert(`Error starting stream: ${error.message}`)
       stopStreamingCleanup()
+      // Set loading state to false on error
+      setIsLoading(false)
     }
   }
 
@@ -572,6 +663,8 @@ export default function StreamerPage() {
       setCreatedRoomId(null)
       myPrivateIdRef.current = null
       setViewers(0)
+      // Set loading state to false when cleanup is complete
+      setIsLoading(false)
       log("Streamer: Streaming stopped and resources cleaned up.")
     })
   }
@@ -606,58 +699,69 @@ export default function StreamerPage() {
     }
   }
 
+  const handleLike = () => {
+    if (!hasLiked) {
+      setLikes((prev) => prev + 1)
+      setHasLiked(true)
+    }
+  }
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) {
+      return (num / 1000000).toFixed(1) + "M"
+    }
+    if (num >= 1000) {
+      return (num / 1000).toFixed(1) + "K"
+    }
+    return num.toString()
+  }
+
+  const getStreamUrl = () => {
+    if (createdRoomId) {
+      return `${window.location.origin}/viewer?roomId=${createdRoomId}`
+    }
+    return ""
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
 
       <div className="container mx-auto p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-120px)]">
-          {/* Left Column - Main Content */}
-          <div className="lg:col-span-3 flex flex-col gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main Content Column */}
+          <div className="lg:col-span-2 flex flex-col gap-4">
             {/* Video Section */}
-            <Card className="flex-1 border-orange-200 dark:border-orange-800">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={isLive ? "destructive" : "secondary"}>{isLive ? "LIVE" : "OFFLINE"}</Badge>
-                    {isStreaming && <span className="text-sm text-muted-foreground">Streaming for 2h 34m</span>}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant={micEnabled ? "default" : "destructive"}
-                      size="sm"
-                      onClick={handleMicToggle}
-                      disabled={!isStreaming}
-                      className={
-                        micEnabled
-                          ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-                          : ""
-                      }
-                    >
-                      {micEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
-                    </Button>
-                    <Button
-                      variant={videoEnabled ? "default" : "destructive"}
-                      size="sm"
-                      onClick={handleVideoToggle}
-                      disabled={!isStreaming}
-                      className={
-                        videoEnabled
-                          ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-                          : ""
-                      }
-                    >
-                      {videoEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
-                    </Button>
-                    <Button variant="outline" size="sm">
-                      <Settings className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
+            <Card className="border-orange-200 dark:border-orange-800">
               <CardContent className="p-0">
                 <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
                   <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+
+                  {/* Start Streaming Button */}
+                  {!isStreaming && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                      <Button
+                        onClick={startStreaming}
+                        disabled={!firebaseUid || !streamSettings || isLoading}
+                        size="lg"
+                        className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                      >
+                        {isLoading ? (
+                          <>
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                            Starting Stream...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="h-5 w-5 mr-2" />
+                            Start Streaming
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Video Disabled Overlay */}
                   {!videoEnabled && (
                     <div className="absolute inset-0 flex items-center justify-center text-white">
                       <div className="text-center">
@@ -666,65 +770,179 @@ export default function StreamerPage() {
                       </div>
                     </div>
                   )}
-                  <div className="absolute bottom-4 left-4 bg-black/70 text-white px-3 py-1 rounded text-sm">
-                    {roomDescription}
-                  </div>
+
+                  {/* Stream Controls Overlay (Top Right) */}
+                  {isStreaming && (
+                    <div className="absolute top-4 right-4 flex items-center gap-2">
+                      <Button
+                        variant={micEnabled ? "default" : "destructive"}
+                        size="sm"
+                        onClick={handleMicToggle}
+                        className={
+                          micEnabled
+                            ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                            : ""
+                        }
+                      >
+                        {micEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                      </Button>
+                      <Button
+                        variant={videoEnabled ? "default" : "destructive"}
+                        size="sm"
+                        onClick={handleVideoToggle}
+                        className={
+                          videoEnabled
+                            ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                            : ""
+                        }
+                      >
+                        {videoEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Stream Info Overlay (Bottom Left) */}
+                  {isStreaming && (
+                    <div className="absolute bottom-4 left-4 flex items-center gap-2">
+                      <Badge variant="destructive" className="text-xs">
+                        <div className="w-1.5 h-1.5 bg-white rounded-full mr-1 animate-pulse"></div>
+                        LIVE
+                      </Badge>
+                      <Badge variant="secondary" className="text-xs bg-black/70 text-white">
+                        <Users className="w-3 h-3 mr-1" />
+                        {formatNumber(viewers)}
+                      </Badge>
+                      <Badge variant="secondary" className="text-xs bg-black/70 text-white">
+                        <Clock className="w-3 h-3 mr-1" />
+                        {streamDuration}
+                      </Badge>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Stream Controls */}
+            {/* Video Title and Description (YouTube-style) */}
             <Card className="border-orange-200 dark:border-orange-800">
               <CardContent className="p-4">
-                <div className="flex items-center gap-2">
-                  {!isStreaming ? (
+                {/* Title and Stream Controls */}
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+                  <div className="flex-1">
+                    <h1 className="text-2xl font-bold mb-2">{streamSettings?.title || "My Awesome Stream"}</h1>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-4 h-4" />
+                        {new Date().toLocaleDateString()}
+                      </span>
+                      {isStreaming && (
+                        <>
+                          <span className="flex items-center gap-1">
+                            <Users className="w-4 h-4" />
+                            {formatNumber(viewers)} watching
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <ThumbsUp className="w-4 h-4" />
+                            {formatNumber(likes)} likes
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {isStreaming ? (
+                      <>
+                        <Button onClick={stopStreamingCleanup} variant="destructive">
+                          <Square className="h-4 w-4 mr-2" />
+                          Stop Streaming
+                        </Button>
+                        {createdRoomId && (
+                          <Button
+                            onClick={handleCopyStreamUrl}
+                            variant="outline"
+                            className="hover:bg-orange-50 dark:hover:bg-orange-950"
+                          >
+                            {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
+                            {copied ? "Copied!" : "Copy Stream URL"}
+                          </Button>
+                        )}
+                      </>
+                    ) : null}
+
                     <Button
-                      onClick={startStreaming}
-                      disabled={!firebaseUid}
-                      className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                      variant={hasLiked ? "default" : "outline"}
+                      onClick={handleLike}
+                      disabled={!isStreaming || hasLiked}
+                      className={
+                        hasLiked
+                          ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                          : "hover:bg-orange-50 dark:hover:bg-orange-950"
+                      }
                     >
-                      <Play className="h-4 w-4 mr-2" />
-                      Start Streaming
+                      <ThumbsUp className={`w-4 h-4 mr-1 ${hasLiked ? "fill-current" : ""}`} />
+                      Like
                     </Button>
-                  ) : (
-                    <Button onClick={stopStreamingCleanup} variant="destructive">
-                      <Square className="h-4 w-4 mr-2" />
-                      Stop Streaming
-                    </Button>
-                  )}
-                  {isStreaming && createdRoomId && (
+
                     <Button
-                      onClick={handleCopyStreamUrl}
                       variant="outline"
                       className="hover:bg-orange-50 dark:hover:bg-orange-950"
+                      onClick={() => setShowShareModal(true)}
+                      disabled={!isStreaming || !createdRoomId}
                     >
-                      {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-                      {copied ? "Copied!" : "Copy Stream URL"}
+                      <Share className="h-4 w-4 mr-2" />
+                      Share
                     </Button>
+                  </div>
+                </div>
+
+                {/* Channel Info and Description */}
+                <div className="flex items-start gap-4 mt-4 pb-4 border-b border-orange-200 dark:border-orange-800">
+                  <Avatar className="h-12 w-12">
+                    <AvatarImage src="/placeholder.svg" alt="Channel" />
+                    <AvatarFallback>CH</AvatarFallback>
+                  </Avatar>
+
+                  <div className="flex-1">
+                    <h3 className="font-medium">Your Channel</h3>
+                    <p className="text-sm text-muted-foreground">2.4K subscribers</p>
+                  </div>
+                </div>
+
+                {/* Description (Collapsible) */}
+                <div className="mt-4">
+                  <button
+                    onClick={() => setShowDescription(!showDescription)}
+                    className="flex items-center justify-between w-full text-left"
+                  >
+                    <span className="font-medium">Description</span>
+                    {showDescription ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+
+                  {showDescription && (
+                    <div className="mt-2 text-sm">
+                      <p>{streamSettings?.description || "No description available."}</p>
+
+                      {streamSettings?.tags && streamSettings.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-4">
+                          {streamSettings.tags.map((tag, index) => (
+                            <Badge key={index} variant="secondary">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Chat Section */}
-            <Card className="h-80 border-orange-200 dark:border-orange-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Live Chat</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 h-full">
-                <LiveChat />
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Right Column - Stats and Controls */}
-          <div className="space-y-4">
-            {/* Stream Stats */}
+            {/* Performance Metrics */}
             <Card className="border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <Activity className="h-5 w-5 text-orange-500" />
-                  Stream Stats
+                  Performance Metrics
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -768,37 +986,33 @@ export default function StreamerPage() {
                 </div>
               </CardContent>
             </Card>
+          </div>
 
-            {/* Viewer Chart */}
+          {/* Right Column - Chat Only */}
+          <div className="space-y-4">
+            {/* Live Chat (YouTube-style) */}
             <Card className="border-orange-200 dark:border-orange-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Viewer Trend</CardTitle>
+              <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                <CardTitle className="text-lg">Live Chat</CardTitle>
+                <Badge variant={isStreaming ? "default" : "secondary"} className="text-xs">
+                  {isStreaming ? "LIVE" : "OFFLINE"}
+                </Badge>
               </CardHeader>
-              <CardContent>
-                <ViewerChart />
-              </CardContent>
-            </Card>
-
-            {/* Logs */}
-            <Card className="border-orange-200 dark:border-orange-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Stream Logs</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <ScrollArea className="h-48 p-4" ref={logsRef}>
-                  <div className="space-y-1">
-                    {logs.map((log, index) => (
-                      <p key={index} className="text-xs text-muted-foreground font-mono">
-                        {log}
-                      </p>
-                    ))}
-                  </div>
-                </ScrollArea>
+              <CardContent className="p-0 h-[600px]">
+                <LiveChat />
               </CardContent>
             </Card>
           </div>
         </div>
       </div>
+
+      <StreamSettingsModal open={showSettingsModal} onOpenChange={setShowSettingsModal} />
+      <ShareModal
+        open={showShareModal}
+        onOpenChange={setShowShareModal}
+        streamUrl={getStreamUrl()}
+        streamTitle={streamSettings?.title || "My Awesome Stream"}
+      />
     </div>
   )
 }
