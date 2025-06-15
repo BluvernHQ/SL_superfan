@@ -10,6 +10,8 @@ import { Navigation } from "@/components/navigation"
 import { LiveChat } from "@/components/live-chat"
 import { ShareModal } from "@/components/share-modal"
 import { useSearchParams } from "next/navigation"
+import { auth } from "@/lib/firebase"
+import { getIdToken } from "firebase/auth"
 
 // Video Player Component
 const VideoPlayer = ({ stream, muted, volume }: { stream: MediaStream; muted: boolean; volume: number }) => {
@@ -62,6 +64,26 @@ export default function ViewerPage() {
 
   const FLASK_PROXY_URL = "https://superfan.alterwork.in/api/janus_proxy"
 
+  // Helper function to get auth headers
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    }
+
+    if (auth.currentUser) {
+      try {
+        const authToken = await getIdToken(auth.currentUser)
+        headers["Authorization"] = `Bearer ${authToken}`
+        console.log("Firebase auth token added to request headers")
+      } catch (tokenError) {
+        console.log(`Error getting Firebase token: ${tokenError}`)
+      }
+    }
+
+    return headers
+  }
+
   // Start watching automatically if room ID is in URL
   useEffect(() => {
     if (roomIdFromUrl && !isWatching) {
@@ -85,12 +107,11 @@ export default function ViewerPage() {
   const sendToProxy = async (path: string, payload: any, method = "POST") => {
     log(`Sending to proxy (${method}): ${path} with payload: ${JSON.stringify(payload)}`)
     try {
+      const headers = await getAuthHeaders()
+
       const response = await fetch(FLASK_PROXY_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers,
         body: JSON.stringify({ path: path, payload: payload, method: method }),
       })
 
@@ -417,10 +438,14 @@ export default function ViewerPage() {
     if (feedInfo) {
       if (feedInfo.pc) feedInfo.pc.close()
       if (feedInfo.handleId && janusSessionIdRef.current) {
-        sendToProxy(`/${janusSessionIdRef.current}/${feedInfo.handleId}`, {
-          janus: "detach",
-          transaction: `detach_${publisherId}_${Date.now()}`,
-        }).catch((err) => log(`Error detaching feed handle ${feedInfo.handleId}: ${err.message}`))
+        sendToProxy(
+          `/${janusSessionIdRef.current}/${feedInfo.handleId}
+        sendToProxy(\`/${janusSessionIdRef.current}/${feedInfo.handleId}`,
+          {
+            janus: "detach",
+            transaction: `detach_${publisherId}_${Date.now()}`,
+          },
+        ).catch((err) => log(`Error detaching feed handle ${feedInfo.handleId}: ${err.message}`))
       }
       delete remoteFeedsRef.current[publisherId]
     }
@@ -512,11 +537,11 @@ export default function ViewerPage() {
   const fetchSidebarStreams = async () => {
     try {
       setIsLoadingSidebarStreams(true)
+      const headers = await getAuthHeaders()
+
       const response = await fetch("https://superfan.alterwork.in/api/get_live", {
         method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
       })
 
       if (response.ok) {

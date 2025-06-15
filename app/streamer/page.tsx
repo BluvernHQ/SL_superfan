@@ -11,6 +11,7 @@ import { Mic, MicOff, Video, VideoOff, Play, Square, Share, Users } from "lucide
 import { Navigation } from "@/components/navigation"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
+import { getIdToken } from "firebase/auth"
 import { useRouter } from "next/navigation"
 import { LiveChat } from "@/components/live-chat"
 import { StreamSettingsModal } from "@/components/stream-settings-modal"
@@ -68,6 +69,26 @@ export default function StreamerPage() {
 
   const FLASK_PROXY_URL = "https://superfan.alterwork.in/api/janus_proxy"
   const FLASK_SERVER_URL = "https://superfan.alterwork.in/api/create_stream"
+
+  // Helper function to get auth headers
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    }
+
+    if (auth.currentUser) {
+      try {
+        const authToken = await getIdToken(auth.currentUser)
+        headers["Authorization"] = `Bearer ${authToken}`
+        log("Firebase auth token added to request headers")
+      } catch (tokenError) {
+        log(`Error getting Firebase token: ${tokenError}`)
+      }
+    }
+
+    return headers
+  }
 
   // Firebase authentication check
   useEffect(() => {
@@ -179,12 +200,11 @@ export default function StreamerPage() {
   const sendToProxy = async (path: string, payload: any, method = "POST") => {
     log(`Sending to proxy (${method}): ${path} with payload: ${JSON.stringify(payload)}`)
     try {
+      const headers = await getAuthHeaders()
+
       const response = await fetch(FLASK_PROXY_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers,
         body: JSON.stringify({ path: path, payload: payload, method: method }),
       })
 
@@ -214,16 +234,22 @@ export default function StreamerPage() {
     }
   }
 
-  const sendToHandler = async (path: string, payload: any, method = "POST") => {
-    log(`Sending to Handler (${method}): ${path} with payload: ${JSON.stringify(payload)}`)
+  const sendToHandler = async (payload: any) => {
+    log(`Sending to create_stream endpoint with payload: ${JSON.stringify(payload)}`)
     try {
+      const headers = await getAuthHeaders()
+
+      // Ensure the payload is properly wrapped
+      const requestBody = {
+        payload: payload,
+      }
+
+      log(`Full request body being sent: ${JSON.stringify(requestBody)}`)
+
       const response = await fetch(FLASK_SERVER_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({ path: path, payload: payload, method: method }),
+        headers,
+        body: JSON.stringify(requestBody),
       })
 
       // Check if response is HTML instead of JSON
@@ -239,8 +265,12 @@ export default function StreamerPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ reason: "Unknown error, not JSON" }))
-        log(`Handler Error: ${response.status} - ${errorData.error?.reason || response.statusText}`)
-        throw new Error(`Handler error: ${response.status} - ${errorData.error?.reason || response.statusText}`)
+        log(
+          `Handler Error: ${response.status} - ${errorData.message || errorData.error?.reason || response.statusText}`,
+        )
+        throw new Error(
+          `Handler error: ${response.status} - ${errorData.message || errorData.error?.reason || response.statusText}`,
+        )
       }
 
       const data = await response.json()
@@ -255,28 +285,24 @@ export default function StreamerPage() {
   const testServerConnection = async () => {
     log("Testing server connection...")
     try {
+      const headers = await getAuthHeaders()
+
       // Test Flask proxy connection
       log(`Testing connection to: ${FLASK_PROXY_URL}`)
       const proxyResponse = await fetch(FLASK_PROXY_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers,
         body: JSON.stringify({ test: true }),
       })
       log(`Proxy server response status: ${proxyResponse.status}`)
       log(`Proxy server content-type: ${proxyResponse.headers.get("content-type")}`)
 
-      // Test Flask handler connection
+      // Test Flask handler connection with proper payload structure
       log(`Testing connection to: ${FLASK_SERVER_URL}`)
       const handlerResponse = await fetch(FLASK_SERVER_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({ test: true }),
+        headers,
+        body: JSON.stringify({ payload: { test: true } }),
       })
       log(`Handler server response status: ${handlerResponse.status}`)
       log(`Handler server content-type: ${handlerResponse.headers.get("content-type")}`)
@@ -374,12 +400,17 @@ export default function StreamerPage() {
 
             if (firebaseUid && currentRoomId) {
               log("Calling sendToHandler with create_stream...")
-              sendToHandler("create_stream", {
+
+              // Create the payload that matches your endpoint structure
+              const streamPayload = {
                 room_id: currentRoomId,
                 room_description: roomDescription,
                 session_id: janusSessionIdRef.current,
                 UID: firebaseUid,
-              })
+                username: getUserDisplayName(),
+              }
+
+              sendToHandler(streamPayload)
                 .then(() => {
                   log("sendToHandler create_stream completed successfully")
                 })
@@ -885,18 +916,6 @@ export default function StreamerPage() {
                         <Users className="w-4 h-4" />
                         {formatNumber(viewers)} viewers
                       </div>
-                      {/*<Badge variant="destructive" className="text-xs">
-                        <div className="w-1.5 h-1.5 bg-white rounded-full mr-1 animate-pulse"></div>
-                        LIVE
-                      </Badge>
-                      <Badge variant="secondary" className="text-xs bg-black/70 text-white">
-                        <Users className="w-3 h-3 mr-1" />
-                        {formatNumber(viewers)}
-                      </Badge>
-                      <Badge variant="secondary" className="text-xs bg-black/70 text-white">
-                        <Clock className="w-3 h-3 mr-1" />
-                        {streamDuration}
-                      </Badge>*/}
                     </div>
                   )}
                 </div>
@@ -993,170 +1012,6 @@ export default function StreamerPage() {
                 </div>
               </CardContent>
             </Card>
-            {/* Video Title and Description (YouTube-style) */}
-            {/*<Card className="border-orange-200 dark:border-orange-800">
-              <CardContent className="p-4">
-                
-                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
-                  <div className="flex-1">
-                    <h1 className="text-2xl font-bold mb-2">{streamSettings?.title || "My Awesome Stream"}</h1>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-4 h-4" />
-                        {new Date().toLocaleDateString()}
-                      </span>
-                      {isStreaming && (
-                        <>
-                          <span className="flex items-center gap-1">
-                            <Users className="w-4 h-4" />
-                            {formatNumber(viewers)} watching
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <ThumbsUp className="w-4 h-4" />
-                            {formatNumber(likes)} likes
-                          </span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    {isStreaming ? (
-                      <>
-                        <Button onClick={stopStreamingCleanup} variant="destructive">
-                          <Square className="h-4 w-4 mr-2" />
-                          Stop Streaming
-                        </Button>
-                        {createdRoomId && (
-                          <Button
-                            onClick={handleCopyStreamUrl}
-                            variant="outline"
-                            className="hover:bg-orange-50 dark:hover:bg-orange-950"
-                          >
-                            {copied ? <Check className="h-4 w-4 mr-2" /> : <Copy className="h-4 w-4 mr-2" />}
-                            {copied ? "Copied!" : "Copy Stream URL"}
-                          </Button>
-                        )}
-                      </>
-                    ) : null}
-
-                    <Button
-                      variant={hasLiked ? "default" : "outline"}
-                      onClick={handleLike}
-                      disabled={!isStreaming || hasLiked}
-                      className={
-                        hasLiked
-                          ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-                          : "hover:bg-orange-50 dark:hover:bg-orange-950"
-                      }
-                    >
-                      <ThumbsUp className={`w-4 h-4 mr-1 ${hasLiked ? "fill-current" : ""}`} />
-                      Like
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      className="hover:bg-orange-50 dark:hover:bg-orange-950"
-                      onClick={() => setShowShareModal(true)}
-                      disabled={!isStreaming || !createdRoomId}
-                    >
-                      <Share className="h-4 w-4 mr-2" />
-                      Share
-                    </Button>
-                  </div>
-                </div>
-
-                
-                <div className="flex items-start gap-4 mt-4 pb-4 border-b border-orange-200 dark:border-orange-800">
-                  <Avatar className="h-12 w-12">
-                    <AvatarImage src="/placeholder.svg" alt="Channel" />
-                    <AvatarFallback>CH</AvatarFallback>
-                  </Avatar>
-
-                  <div className="flex-1">
-                    <h3 className="font-medium">Your Channel</h3>
-                    <p className="text-sm text-muted-foreground">2.4K subscribers</p>
-                  </div>
-                </div>
-
-                
-                <div className="mt-4">
-                  <button
-                    onClick={() => setShowDescription(!showDescription)}
-                    className="flex items-center justify-between w-full text-left"
-                  >
-                    <span className="font-medium">Description</span>
-                    {showDescription ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </button>
-
-                  {showDescription && (
-                    <div className="mt-2 text-sm">
-                      <p>{streamSettings?.description || "No description available."}</p>
-
-                      {streamSettings?.tags && streamSettings.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-4">
-                          {streamSettings.tags.map((tag, index) => (
-                            <Badge key={index} variant="secondary">
-                              {tag}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            
-            <Card className="border-orange-200 dark:border-orange-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Activity className="h-5 w-5 text-orange-500" />
-                  Performance Metrics
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Viewers</span>
-                    <span className="text-lg font-bold text-orange-600">{viewers.toLocaleString()}</span>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium flex items-center gap-1">
-                      <Wifi className="h-4 w-4" />
-                      Internet
-                    </span>
-                    <span className="text-sm font-medium">{internetStrength}%</span>
-                  </div>
-                  <Progress value={internetStrength} className="h-2" />
-                </div>
-
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Bitrate</span>
-                    <span className="text-sm font-medium">{bitrate} kbps</span>
-                  </div>
-                  <Progress value={(bitrate / 5000) * 100} className="h-2" />
-                </div>
-
-                <div className="pt-2 border-t border-orange-200 dark:border-orange-800">
-                  <div className="grid grid-cols-2 gap-4 text-center">
-                    <div>
-                      <div className="text-lg font-bold text-orange-600">2.4K</div>
-                      <div className="text-xs text-muted-foreground">Followers</div>
-                    </div>
-                    <div>
-                      <div className="text-lg font-bold text-orange-600">156</div>
-                      <div className="text-xs text-muted-foreground">Likes</div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>*/}
             {/* Update the channel info section to only show username */}
             <div className="flex items-start gap-4 mt-4 pb-4 border-b border-orange-200 dark:border-orange-800">
               <Avatar className="h-12 w-12">
