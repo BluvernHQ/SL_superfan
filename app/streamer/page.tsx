@@ -120,19 +120,16 @@ export default function StreamerPage() {
         try {
           const settings = JSON.parse(savedSettings)
           setStreamSettings(settings)
-          setRoomDescription(settings.title) // Use title as room description
           setTitle(settings.title)
           setDescription(settings.description)
           setEnableChat(settings.enableChat)
           log(`Stream settings loaded: ${settings.title}`)
         } catch (error) {
-          log("Error parsing stream settings, showing modal")
-          setShowSettingsModal(true)
+          log("Error parsing stream settings")
+          // Don't auto-show modal, let user click start streaming
         }
-      } else {
-        log("No stream settings found, showing modal")
-        setShowSettingsModal(true)
       }
+      // Don't auto-show modal, let user click start streaming
     }
   }, [firebaseUid])
 
@@ -404,7 +401,7 @@ export default function StreamerPage() {
               // Create the payload that matches your endpoint structure
               const streamPayload = {
                 room_id: currentRoomId,
-                room_description: roomDescription,
+                room_description: streamSettings?.title || "Live Stream",
                 session_id: janusSessionIdRef.current,
                 UID: firebaseUid,
                 username: getUserDisplayName(),
@@ -591,16 +588,18 @@ export default function StreamerPage() {
   }
 
   const startStreaming = async () => {
-    if (!title.trim()) {
+    // Check if we have stream settings, if not show the modal
+    if (!streamSettings) {
+      setShowSettingsModal(true)
+      return
+    }
+
+    if (!streamSettings.title.trim()) {
       alert("Please enter a stream title")
       return
     }
 
-    if (!roomDescription) {
-      alert("Please enter a Room Description.")
-      return
-    }
-    log(`Streamer: Starting stream for room: "${roomDescription}"`)
+    log(`Streamer: Starting stream for room: "${streamSettings.title}"`)
 
     // Set loading state to true
     setIsLoading(true)
@@ -615,7 +614,7 @@ export default function StreamerPage() {
 
       await createJanusSession()
       await attachVideoRoomPlugin()
-      const newRoomId = await createRoom(roomDescription)
+      const newRoomId = await createRoom(streamSettings.title) // Use settings title
 
       // Verify the room ID was set correctly
       log(`Room creation returned: ${newRoomId}`)
@@ -850,7 +849,7 @@ export default function StreamerPage() {
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                       <Button
                         onClick={startStreaming}
-                        disabled={!firebaseUid || !streamSettings || isLoading}
+                        disabled={!firebaseUid || isLoading}
                         size="lg"
                         className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
                       >
@@ -1040,7 +1039,26 @@ export default function StreamerPage() {
         </div>
       </div>
 
-      <StreamSettingsModal open={showSettingsModal} onOpenChange={setShowSettingsModal} />
+      <StreamSettingsModal
+        open={showSettingsModal}
+        onOpenChange={setShowSettingsModal}
+        onSave={() => {
+          // Reload settings and then start streaming
+          const savedSettings = localStorage.getItem("streamSettings")
+          if (savedSettings) {
+            const settings = JSON.parse(savedSettings)
+            setStreamSettings(settings)
+            setTitle(settings.title)
+            setDescription(settings.description)
+            setEnableChat(settings.enableChat)
+
+            // Start streaming after settings are saved
+            setTimeout(() => {
+              startStreaming()
+            }, 100)
+          }
+        }}
+      />
       <ShareModal
         open={showShareModal}
         onOpenChange={setShowShareModal}

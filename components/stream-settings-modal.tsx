@@ -15,9 +15,10 @@ import { X, Plus } from "lucide-react"
 interface StreamSettingsModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onSave?: () => void
 }
 
-export function StreamSettingsModal({ open, onOpenChange }: StreamSettingsModalProps) {
+export function StreamSettingsModal({ open, onOpenChange, onSave }: StreamSettingsModalProps) {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [tags, setTags] = useState<string[]>([])
@@ -66,6 +67,11 @@ export function StreamSettingsModal({ open, onOpenChange }: StreamSettingsModalP
 
     localStorage.setItem("streamSettings", JSON.stringify(settings))
     onOpenChange(false)
+
+    // Call the onSave callback if provided
+    if (onSave) {
+      onSave()
+    }
 
     // Reload the page to apply new settings
     window.location.reload()
