@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation"
 import { LiveChat } from "@/components/live-chat"
 import { StreamSettingsModal } from "@/components/stream-settings-modal"
 import { ShareModal } from "@/components/share-modal"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 export default function StreamerPage() {
   const [isStreaming, setIsStreaming] = useState(false)
@@ -47,7 +48,7 @@ export default function StreamerPage() {
   const [hasLiked, setHasLiked] = useState(false)
   const [streamDuration, setStreamDuration] = useState("00:00:00")
   const [isLoading, setIsLoading] = useState(false)
-  const [isLive, setIsLive] = useState(false)
+  const [isLive, setIsLive] = useState(isStreaming)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
 
@@ -795,6 +796,10 @@ export default function StreamerPage() {
     }
   }
 
+  const getUserDisplayName = () => {
+    return user?.displayName || user?.email?.split("@")[0] || "User"
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -1152,6 +1157,18 @@ export default function StreamerPage() {
                 </div>
               </CardContent>
             </Card>*/}
+            {/* Update the channel info section to only show username */}
+            <div className="flex items-start gap-4 mt-4 pb-4 border-b border-orange-200 dark:border-orange-800">
+              <Avatar className="h-12 w-12">
+                <AvatarImage src="/placeholder.svg" alt="Channel" />
+                <AvatarFallback>@</AvatarFallback>
+              </Avatar>
+
+              <div className="flex-1">
+                <h3 className="font-medium">@{getUserDisplayName()}</h3>
+                <p className="text-sm text-muted-foreground">2.4K subscribers</p>
+              </div>
+            </div>
           </div>
 
           {/* Chat Section */}

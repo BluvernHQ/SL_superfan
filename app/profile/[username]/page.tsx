@@ -19,7 +19,6 @@ export default function ProfilePage({ params }: { params: { username: string } }
   // Mock profile data
   const profileUser = {
     username: params.username,
-    displayName: "Alex Gaming",
     followers: 2400,
     following: 156,
     isLive: true,
@@ -80,14 +79,13 @@ export default function ProfilePage({ params }: { params: { username: string } }
             <CardContent className="p-6">
               <div className="flex items-center gap-6">
                 <Avatar className="w-24 h-24">
-                  <AvatarImage src="/placeholder.svg" alt={profileUser.displayName} />
-                  <AvatarFallback className="text-2xl">{profileUser.displayName.charAt(0)}</AvatarFallback>
+                  <AvatarImage src="/placeholder.svg" alt={profileUser.username} />
+                  <AvatarFallback className="text-2xl">{profileUser.username.charAt(0).toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <h1 className="text-3xl font-bold">{profileUser.displayName}</h1>
+                    <h1 className="text-3xl font-bold">@{profileUser.username}</h1>
                   </div>
-                  <p className="text-muted-foreground mb-4">@{profileUser.username}</p>
                   <div className="flex gap-6 text-sm">
                     <span>
                       <strong>{formatNumber(profileUser.followers)}</strong> followers

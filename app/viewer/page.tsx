@@ -691,7 +691,7 @@ export default function ViewerPage() {
                             S
                           </div>
                           <div>
-                            <div className="font-medium">Streamer</div>
+                            <div className="font-medium">@Streamer</div>
                             <div className="text-sm text-muted-foreground">Broadcasting live</div>
                           </div>
                         </div>

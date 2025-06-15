@@ -21,6 +21,7 @@ interface ChatMessage {
 }
 
 export function LiveChat() {
+  // Update the mock messages to only use usernames
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: "1",
@@ -76,6 +77,7 @@ export function LiveChat() {
         "Your setup is awesome!",
       ]
 
+      // Update the random usernames array
       const randomUsernames = [
         "ChatUser" + Math.floor(Math.random() * 1000),
         "Viewer" + Math.floor(Math.random() * 1000),
@@ -143,10 +145,11 @@ export function LiveChat() {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
+                  {/* Update the message rendering to show @username */}
                   <span
                     className={`font-medium text-sm ${msg.username === "You" ? "text-orange-600 dark:text-orange-400" : ""}`}
                   >
-                    {msg.username}
+                    @{msg.username}
                   </span>
                   <span className="text-xs text-muted-foreground">{formatTime(msg.timestamp)}</span>
 
@@ -187,8 +190,9 @@ export function LiveChat() {
 
           <div className="flex-1 flex gap-2 items-center">
             <div className="relative flex-1">
+              {/* Update the chat input placeholder */}
               <Input
-                placeholder="Chat as You..."
+                placeholder="Chat as @You..."
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 className="pr-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"

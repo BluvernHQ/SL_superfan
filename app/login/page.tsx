@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Eye, EyeOff, Play, Users, Mail, Lock, User, AlertCircle } from "lucide-react"
+import { Eye, EyeOff, Play, Users, Mail, Lock, User, AlertCircle, Check, X } from "lucide-react"
 import Link from "next/link"
 import { auth } from "@/lib/firebase"
 import {
@@ -31,6 +31,10 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [user, setUser] = useState<any>(null)
+  const [isCheckingUsername, setIsCheckingUsername] = useState(false)
+  const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken" | "error">("idle")
+  const [usernameCheckTimeout, setUsernameCheckTimeout] = useState<NodeJS.Timeout | null>(null)
+  const [signupStep, setSignupStep] = useState<"creating" | "logging_in" | "creating_profile" | "complete">("complete")
   const router = useRouter()
   const searchParams = useSearchParams()
   const redirectPath = searchParams.get("redirect")
@@ -46,7 +50,7 @@ export default function LoginPage() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
-      if (currentUser) {
+      if (currentUser && signupStep === "complete") {
         // Build redirect URL with parameters
         let redirectUrl = "/"
         const params = new URLSearchParams()
@@ -68,15 +72,114 @@ export default function LoginPage() {
     })
 
     return () => unsubscribe()
-  }, [router, redirectPath, openStreamModal])
+  }, [router, redirectPath, openStreamModal, signupStep])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value,
+      [name]: value,
     })
+
     // Clear error when user types
     setError(null)
+
+    // Handle username checking with debounce
+    if (name === "username") {
+      // Clear previous timeout
+      if (usernameCheckTimeout) {
+        clearTimeout(usernameCheckTimeout)
+      }
+
+      // Reset status if username is empty or too short
+      if (value.length < 3) {
+        setUsernameStatus("idle")
+        return
+      }
+
+      // Set checking status
+      setUsernameStatus("checking")
+
+      // Set new timeout for username check
+      const timeout = setTimeout(() => {
+        checkUsernameAvailability(value)
+      }, 500) // 500ms debounce
+
+      setUsernameCheckTimeout(timeout)
+    }
+  }
+
+  const checkUsernameAvailability = async (username: string) => {
+    if (!username || username.length < 3) {
+      setUsernameStatus("idle")
+      return
+    }
+
+    try {
+      setIsCheckingUsername(true)
+
+      // For username checking during signup, we don't need auth token
+      // as the user isn't authenticated yet
+      const response = await fetch("https://superfan.alterwork.in/api/check_username", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          payload: { username },
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setUsernameStatus("available")
+      } else if (response.status === 400) {
+        setUsernameStatus("taken")
+      } else {
+        setUsernameStatus("error")
+      }
+    } catch (error) {
+      console.error("Error checking username:", error)
+      setUsernameStatus("error")
+    } finally {
+      setIsCheckingUsername(false)
+    }
+  }
+
+  const createUserInDatabase = async (firebaseUser: any) => {
+    try {
+      // Get fresh token from the authenticated user
+      const idToken = await firebaseUser.getIdToken(true) // Force refresh
+
+      console.log("Creating user in database with token...")
+
+      const response = await fetch("https://superfan.alterwork.in/api/create_user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          payload: {
+            username: firebaseUser.displayName || formData.username,
+          },
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error("Database user creation failed:", errorData)
+        throw new Error(errorData.message || "Failed to create user in database")
+      }
+
+      const userData = await response.json()
+      console.log("User created in database successfully:", userData)
+      return userData
+    } catch (error) {
+      console.error("Error creating user in database:", error)
+      throw error
+    }
   }
 
   const validateUsername = (username: string): string | null => {
@@ -105,7 +208,13 @@ export default function LoginPage() {
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence)
 
       // Sign in with email and password
-      await signInWithEmailAndPassword(auth, formData.email, formData.password)
+      const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password)
+
+      console.log("User logged in successfully:", {
+        uid: userCredential.user.uid,
+        email: userCredential.user.email,
+        displayName: userCredential.user.displayName,
+      })
 
       // Redirect is handled by the auth state change listener
     } catch (error: any) {
@@ -120,12 +229,22 @@ export default function LoginPage() {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
+    setSignupStep("creating")
 
     // Validate username
     const usernameError = validateUsername(formData.username)
     if (usernameError) {
       setError(usernameError)
       setIsLoading(false)
+      setSignupStep("complete")
+      return
+    }
+
+    // Check if username is available
+    if (usernameStatus !== "available") {
+      setError("Please choose an available username")
+      setIsLoading(false)
+      setSignupStep("complete")
       return
     }
 
@@ -133,29 +252,55 @@ export default function LoginPage() {
     if (formData.password !== formData.confirmPassword) {
       setError("Passwords do not match")
       setIsLoading(false)
+      setSignupStep("complete")
       return
     }
 
     try {
-      // Create user with email and password
+      // Step 1: Create user with email and password
+      console.log("Creating Firebase user...")
       const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password)
-      const user = userCredential.user
+      const firebaseUser = userCredential.user
 
-      // Update the user's profile with the username
-      await updateProfile(user, {
+      // Step 2: Update the user's profile with the username
+      console.log("Updating user profile with username...")
+      await updateProfile(firebaseUser, {
         displayName: formData.username,
       })
 
-      console.log("User created successfully:", {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
+      console.log("Firebase user created successfully:", {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        displayName: firebaseUser.displayName,
       })
+
+      // Step 3: Log in the user (they should already be logged in after createUserWithEmailAndPassword)
+      setSignupStep("logging_in")
+
+      // Ensure user is properly authenticated
+      await firebaseUser.reload()
+
+      // Step 4: Create user profile in database
+      setSignupStep("creating_profile")
+      console.log("Creating user profile in database...")
+
+      try {
+        await createUserInDatabase(firebaseUser)
+        console.log("User profile created in database successfully")
+      } catch (dbError) {
+        console.error("Failed to create user in database:", dbError)
+        // Show error but don't prevent login since Firebase user is created
+        setError("Account created but profile setup failed. Please contact support.")
+      }
+
+      // Step 5: Complete signup
+      setSignupStep("complete")
 
       // Redirect is handled by the auth state change listener
     } catch (error: any) {
       console.error("Signup error:", error)
       setError(getFirebaseErrorMessage(error.code))
+      setSignupStep("complete")
     } finally {
       setIsLoading(false)
     }
@@ -178,6 +323,62 @@ export default function LoginPage() {
         return "Too many unsuccessful login attempts. Please try again later."
       default:
         return "An error occurred. Please try again."
+    }
+  }
+
+  const getUsernameStatusIcon = () => {
+    switch (usernameStatus) {
+      case "checking":
+        return <div className="w-4 h-4 border-2 border-orange-600 border-t-transparent rounded-full animate-spin" />
+      case "available":
+        return <Check className="w-4 h-4 text-green-600" />
+      case "taken":
+        return <X className="w-4 h-4 text-red-600" />
+      case "error":
+        return <AlertCircle className="w-4 h-4 text-yellow-600" />
+      default:
+        return null
+    }
+  }
+
+  const getUsernameStatusMessage = () => {
+    switch (usernameStatus) {
+      case "checking":
+        return "Checking availability..."
+      case "available":
+        return "Username is available!"
+      case "taken":
+        return "Username is already taken"
+      case "error":
+        return "Error checking username"
+      default:
+        return "3-20 characters, letters, numbers, and underscores only"
+    }
+  }
+
+  const getUsernameStatusColor = () => {
+    switch (usernameStatus) {
+      case "available":
+        return "text-green-600"
+      case "taken":
+        return "text-red-600"
+      case "error":
+        return "text-yellow-600"
+      default:
+        return "text-muted-foreground"
+    }
+  }
+
+  const getSignupButtonText = () => {
+    switch (signupStep) {
+      case "creating":
+        return "Creating account..."
+      case "logging_in":
+        return "Logging in..."
+      case "creating_profile":
+        return "Setting up profile..."
+      default:
+        return "Create Account"
     }
   }
 
@@ -343,17 +544,19 @@ export default function LoginPage() {
                         placeholder="Choose a unique username"
                         value={formData.username}
                         onChange={handleInputChange}
-                        className="pl-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
+                        className="pl-10 pr-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
                         required
                         minLength={3}
                         maxLength={20}
                         pattern="[a-zA-Z0-9_]+"
                         title="Username can only contain letters, numbers, and underscores"
+                        disabled={isLoading}
                       />
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                        {getUsernameStatusIcon()}
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      3-20 characters, letters, numbers, and underscores only
-                    </p>
+                    <p className={`text-xs ${getUsernameStatusColor()}`}>{getUsernameStatusMessage()}</p>
                   </div>
 
                   <div className="space-y-2">
@@ -371,6 +574,7 @@ export default function LoginPage() {
                         onChange={handleInputChange}
                         className="pl-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
                         required
+                        disabled={isLoading}
                       />
                     </div>
                   </div>
@@ -391,6 +595,7 @@ export default function LoginPage() {
                         className="pl-10 pr-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
                         required
                         minLength={6}
+                        disabled={isLoading}
                       />
                       <Button
                         type="button"
@@ -398,6 +603,7 @@ export default function LoginPage() {
                         size="sm"
                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                         onClick={() => setShowPassword(!showPassword)}
+                        disabled={isLoading}
                       >
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
@@ -419,6 +625,7 @@ export default function LoginPage() {
                         onChange={handleInputChange}
                         className="pl-10 pr-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
                         required
+                        disabled={isLoading}
                       />
                       <Button
                         type="button"
@@ -426,6 +633,7 @@ export default function LoginPage() {
                         size="sm"
                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        disabled={isLoading}
                       >
                         {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
@@ -433,7 +641,12 @@ export default function LoginPage() {
                   </div>
 
                   <div className="flex items-center space-x-2">
-                    <Checkbox id="terms" className="border-orange-300 data-[state=checked]:bg-orange-600" required />
+                    <Checkbox
+                      id="terms"
+                      className="border-orange-300 data-[state=checked]:bg-orange-600"
+                      required
+                      disabled={isLoading}
+                    />
                     <Label htmlFor="terms" className="text-sm">
                       I agree to the{" "}
                       <Link href="/terms" className="text-orange-600 hover:text-orange-700 hover:underline">
@@ -451,12 +664,12 @@ export default function LoginPage() {
                   <Button
                     type="submit"
                     className="w-full bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white font-medium py-2.5"
-                    disabled={isLoading}
+                    disabled={isLoading || usernameStatus !== "available"}
                   >
                     {isLoading ? (
                       <>
                         <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                        Creating account...
+                        {getSignupButtonText()}
                       </>
                     ) : (
                       "Create Account"

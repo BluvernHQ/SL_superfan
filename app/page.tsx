@@ -57,7 +57,6 @@ export default function HomePage() {
     {
       id: 1,
       username: "GamerPro123",
-      displayName: "Alex Gaming",
       isLive: true,
       totalSessions: 45,
       followers: 2400,
@@ -65,7 +64,6 @@ export default function HomePage() {
     {
       id: 2,
       username: "MusicMaster",
-      displayName: "Sarah Music",
       isLive: false,
       totalSessions: 32,
       followers: 1800,
@@ -73,7 +71,6 @@ export default function HomePage() {
     {
       id: 3,
       username: "ArtCreator",
-      displayName: "Mike Art",
       isLive: true,
       totalSessions: 28,
       followers: 950,
@@ -182,16 +179,15 @@ export default function HomePage() {
                   <div className="flex items-center gap-3 mb-3">
                     <div className="relative">
                       <Avatar className="h-12 w-12">
-                        <AvatarImage src="/placeholder.svg" alt={user.displayName} />
-                        <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
+                        <AvatarImage src="/placeholder.svg" alt={user.username} />
+                        <AvatarFallback>{user.username.charAt(0)}</AvatarFallback>
                       </Avatar>
                       {user.isLive && (
                         <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white"></div>
                       )}
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-semibold">{user.displayName}</h3>
-                      <p className="text-sm text-muted-foreground">@{user.username}</p>
+                      <h3 className="font-semibold">@{user.username}</h3>
                     </div>
                     {user.isLive && (
                       <Badge variant="destructive" className="text-xs">
