@@ -4,221 +4,225 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Play, Users } from "lucide-react"
-import { StreamSettingsModal } from "@/components/stream-settings-modal"
 import { Navigation } from "@/components/navigation"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 
-export default function LandingPage() {
-  const [showStreamModal, setShowStreamModal] = useState(false)
+export default function HomePage() {
   const [liveStreams, setLiveStreams] = useState<any[]>([])
+  const [allUsers, setAllUsers] = useState<any[]>([])
   const [isLoadingStreams, setIsLoadingStreams] = useState(true)
   const [user, setUser] = useState<any>(null)
-  const [isAuthChecking, setIsAuthChecking] = useState(true)
   const router = useRouter()
-  const searchParams = useSearchParams()
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
-      setIsAuthChecking(false)
-
-      // Check if user just logged in and should open stream modal
-      if (currentUser) {
-        const openStreamModal = searchParams.get("openStreamModal")
-        const redirect = searchParams.get("redirect")
-
-        if (openStreamModal === "true" || redirect === "stream") {
-          setShowStreamModal(true)
-          // Clean up URL parameters
-          const url = new URL(window.location.href)
-          url.searchParams.delete("openStreamModal")
-          url.searchParams.delete("redirect")
-          window.history.replaceState({}, "", url.toString())
-        }
-      }
     })
-
     return () => unsubscribe()
-  }, [searchParams])
+  }, [])
 
   const fetchLiveStreams = async () => {
     try {
       setIsLoadingStreams(true)
       const response = await fetch("https://superfan.alterwork.in/api/get_live", {
         method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       })
 
       if (response.ok) {
         const data = await response.json()
-        // Convert the streams object to an array
         const streamsArray = Object.entries(data.live || {}).map(([sessionId, streamData]: [string, any]) => ({
           sessionId,
           ...streamData,
           id: streamData.roomId,
           title: `${streamData.name}'s Live Stream`,
           streamer: streamData.name,
-          viewers: Math.floor(Math.random() * 2000) + 100, // Mock viewer count
-          thumbnail: "/placeholder.svg?height=180&width=320",
+          viewers: Math.floor(Math.random() * 2000) + 100,
         }))
         setLiveStreams(streamsArray)
       }
     } catch (error) {
       console.error("Error fetching live streams:", error)
-      // Try to provide more helpful information about the error
-      if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
-        console.error("Network error: Check if the server is running or if CORS is configured correctly")
-      }
     } finally {
       setIsLoadingStreams(false)
     }
   }
 
+  // Mock users data - replace with actual API call
+  const mockUsers = [
+    {
+      id: 1,
+      username: "GamerPro123",
+      displayName: "Alex Gaming",
+      isLive: true,
+      totalSessions: 45,
+      followers: 2400,
+    },
+    {
+      id: 2,
+      username: "MusicMaster",
+      displayName: "Sarah Music",
+      isLive: false,
+      totalSessions: 32,
+      followers: 1800,
+    },
+    {
+      id: 3,
+      username: "ArtCreator",
+      displayName: "Mike Art",
+      isLive: true,
+      totalSessions: 28,
+      followers: 950,
+    },
+  ]
+
   useEffect(() => {
     fetchLiveStreams()
-
-    // Poll for updates every 30 seconds
+    setAllUsers(mockUsers)
     const interval = setInterval(fetchLiveStreams, 30000)
-
     return () => clearInterval(interval)
   }, [])
 
-  const handleGoLive = () => {
+  const handleStartLive = () => {
     if (user) {
-      setShowStreamModal(true)
+      router.push("/streamer")
     } else {
-      // Add openStreamModal parameter to URL so we can restore modal state after login
-      router.push("/login?redirect=stream&openStreamModal=true")
+      router.push("/login?redirect=stream")
     }
+  }
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + "M"
+    if (num >= 1000) return (num / 1000).toFixed(1) + "K"
+    return num.toString()
   }
 
   return (
     <div className="min-h-screen bg-background">
-      <Navigation onGoLive={handleGoLive} />
+      <Navigation />
 
       <main className="container mx-auto px-4 py-8">
-        {/* Hero Section */}
-        <section className="text-center py-12 mb-12">
-          <h1 className="text-4xl md:text-6xl font-bold mb-4 bg-gradient-to-r from-orange-600 to-orange-400 bg-clip-text text-transparent">
+        {/* Start Live Section */}
+        <section className="text-center py-8 mb-8">
+          <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-orange-600 to-orange-400 bg-clip-text text-transparent">
             Stream Your Passion
           </h1>
-          <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Connect with your audience in real-time. Share your creativity, skills, and passion with the world.
-          </p>
           <Button
             size="lg"
+            onClick={handleStartLive}
             className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-            onClick={handleGoLive}
           >
             <Play className="mr-2 h-5 w-5" />
-            Start Streaming Now
+            Start Live Stream
           </Button>
         </section>
 
-        {/* Featured Streams */}
-        <section>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold">Live Now</h2>
-            <div className="flex items-center text-sm text-muted-foreground">
-              <div className="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></div>
-              Live
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Current Live Streams */}
+        <section className="mb-8">
+          <h2 className="text-2xl font-bold mb-4">Live Now</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {isLoadingStreams ? (
-              // Loading skeleton
-              Array.from({ length: 4 }).map((_, index) => (
+              Array.from({ length: 3 }).map((_, index) => (
                 <Card key={index} className="animate-pulse">
                   <div className="w-full h-48 bg-muted rounded-t-lg"></div>
                   <CardContent className="p-4">
                     <div className="h-4 bg-muted rounded mb-2"></div>
-                    <div className="h-3 bg-muted rounded mb-2"></div>
-                    <div className="h-3 bg-muted rounded w-1/2"></div>
+                    <div className="h-3 bg-muted rounded"></div>
                   </CardContent>
                 </Card>
               ))
             ) : liveStreams.length > 0 ? (
               liveStreams.map((stream) => (
-                <Card key={stream.sessionId} className="group cursor-pointer hover:shadow-lg transition-shadow">
+                <Card key={stream.sessionId} className="cursor-pointer hover:shadow-lg transition-shadow">
                   <div className="relative">
-                    <img
-                      src={stream.thumbnail || "/placeholder.svg"}
-                      alt={stream.title}
-                      className="w-full h-48 object-cover rounded-t-lg"
-                    />
-                    <div className="absolute top-2 left-2">
-                      <Badge variant="destructive" className="text-xs">
-                        <div className="w-1.5 h-1.5 bg-white rounded-full mr-1"></div>
-                        LIVE
-                      </Badge>
+                    <div className="w-full h-48 bg-black rounded-t-lg flex items-center justify-center">
+                      <Play className="w-12 h-12 text-white opacity-50" />
                     </div>
-                    <div className="absolute top-2 right-2">
-                      <Badge variant="secondary" className="text-xs">
-                        <Users className="w-3 h-3 mr-1" />
-                        {stream.viewers.toLocaleString()}
-                      </Badge>
-                    </div>
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20 rounded-t-lg">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="bg-white/90 hover:bg-white text-black"
-                        onClick={() => window.open(`/viewer?roomId=${stream.roomId}`, "_blank")}
-                      >
-                        <Play className="w-4 h-4 mr-1" />
-                        Watch
-                      </Button>
-                    </div>
+                    <Badge variant="destructive" className="absolute top-2 left-2 text-xs">
+                      <div className="w-1.5 h-1.5 bg-white rounded-full mr-1"></div>
+                      LIVE
+                    </Badge>
+                    <Badge variant="secondary" className="absolute top-2 right-2 text-xs">
+                      <Users className="w-3 h-3 mr-1" />
+                      {stream.viewers}
+                    </Badge>
                   </div>
                   <CardContent className="p-4">
-                    <h3 className="font-semibold mb-1 group-hover:text-primary transition-colors line-clamp-2">
-                      {stream.title}
-                    </h3>
-                    <p className="text-sm text-muted-foreground mb-2">{stream.streamer}</p>
+                    <h3 className="font-semibold mb-1">{stream.title}</h3>
+                    <p className="text-sm text-muted-foreground">{stream.streamer}</p>
+                    <Button
+                      size="sm"
+                      className="mt-2 w-full"
+                      onClick={() => window.open(`/viewer?roomId=${stream.roomId}`, "_blank")}
+                    >
+                      Watch Stream
+                    </Button>
                   </CardContent>
                 </Card>
               ))
             ) : (
-              <div className="col-span-full text-center py-12">
-                <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Play className="w-8 h-8 text-muted-foreground" />
-                </div>
-                <h3 className="text-xl font-semibold mb-2">No Live Streams</h3>
-                <p className="text-muted-foreground">No one is streaming right now. Check back later!</p>
+              <div className="col-span-full text-center py-8">
+                <p className="text-muted-foreground">No live streams right now</p>
               </div>
             )}
           </div>
         </section>
 
-        {/* Stats Section */}
-        <section className="mt-16 py-12 bg-muted/50 rounded-lg">
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-8">Join Our Growing Community</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div>
-                <div className="text-3xl font-bold text-orange-600 mb-2">10K+</div>
-                <div className="text-muted-foreground">Active Streamers</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-orange-500 mb-2">500K+</div>
-                <div className="text-muted-foreground">Monthly Viewers</div>
-              </div>
-              <div>
-                <div className="text-3xl font-bold text-orange-400 mb-2">1M+</div>
-                <div className="text-muted-foreground">Hours Streamed</div>
-              </div>
-            </div>
+        {/* All Users */}
+        <section>
+          <h2 className="text-2xl font-bold mb-4">All Users</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {allUsers.map((user) => (
+              <Card key={user.id} className="cursor-pointer hover:shadow-lg transition-shadow">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="relative">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage src="/placeholder.svg" alt={user.displayName} />
+                        <AvatarFallback>{user.displayName.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      {user.isLive && (
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white"></div>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold">{user.displayName}</h3>
+                      <p className="text-sm text-muted-foreground">@{user.username}</p>
+                    </div>
+                    {user.isLive && (
+                      <Badge variant="destructive" className="text-xs">
+                        LIVE
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-center">
+                    <div>
+                      <div className="font-bold text-orange-600">{user.totalSessions}</div>
+                      <div className="text-xs text-muted-foreground">Sessions</div>
+                    </div>
+                    <div>
+                      <div className="font-bold text-orange-600">{formatNumber(user.followers)}</div>
+                      <div className="text-xs text-muted-foreground">Followers</div>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full mt-3"
+                    onClick={() => router.push(`/profile/${user.username}`)}
+                  >
+                    View Profile
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </section>
       </main>
-
-      <StreamSettingsModal open={showStreamModal} onOpenChange={setShowStreamModal} />
     </div>
   )
 }

@@ -2,28 +2,12 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
-import {
-  Wifi,
-  Activity,
-  Mic,
-  MicOff,
-  Video,
-  VideoOff,
-  Play,
-  Square,
-  Copy,
-  Check,
-  ChevronDown,
-  ChevronUp,
-  Share,
-  ThumbsUp,
-  Users,
-  Clock,
-  Calendar,
-} from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
+import { Mic, MicOff, Video, VideoOff, Play, Square, Share, Users } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
@@ -31,19 +15,22 @@ import { useRouter } from "next/navigation"
 import { LiveChat } from "@/components/live-chat"
 import { StreamSettingsModal } from "@/components/stream-settings-modal"
 import { ShareModal } from "@/components/share-modal"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 export default function StreamerPage() {
-  const [isLive, setIsLive] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
   const [viewers, setViewers] = useState(0)
   const [micEnabled, setMicEnabled] = useState(true)
   const [videoEnabled, setVideoEnabled] = useState(true)
+  const [enableChat, setEnableChat] = useState(true)
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [roomId, setRoomId] = useState<string | null>(null)
+  const [user, setUser] = useState<any>(null)
   const [internetStrength, setInternetStrength] = useState(85)
   const [bitrate, setBitrate] = useState(2500)
   const [roomDescription, setRoomDescription] = useState("My Awesome Stream")
   const [createdRoomId, setCreatedRoomId] = useState<string | null>(null)
   const [logs, setLogs] = useState<string[]>([])
-  const [isStreaming, setIsStreaming] = useState(false)
   const [firebaseUid, setFirebaseUid] = useState<string | null>(null)
   const [isRecording, setIsRecording] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -60,6 +47,9 @@ export default function StreamerPage() {
   const [hasLiked, setHasLiked] = useState(false)
   const [streamDuration, setStreamDuration] = useState("00:00:00")
   const [isLoading, setIsLoading] = useState(false)
+  const [isLive, setIsLive] = useState(false)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const logsRef = useRef<HTMLDivElement>(null)
@@ -80,16 +70,16 @@ export default function StreamerPage() {
 
   // Firebase authentication check
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setFirebaseUid(user.uid)
-        log("Firebase authenticated. UID: " + user.uid)
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser)
+        setFirebaseUid(currentUser.uid)
+        log("Firebase authenticated. UID: " + currentUser.uid)
       } else {
         log("Not authenticated with Firebase. Redirecting to login...")
         router.push("/login")
       }
     })
-
     return () => unsubscribe()
   }, [router])
 
@@ -109,6 +99,9 @@ export default function StreamerPage() {
           const settings = JSON.parse(savedSettings)
           setStreamSettings(settings)
           setRoomDescription(settings.title) // Use title as room description
+          setTitle(settings.title)
+          setDescription(settings.description)
+          setEnableChat(settings.enableChat)
           log(`Stream settings loaded: ${settings.title}`)
         } catch (error) {
           log("Error parsing stream settings, showing modal")
@@ -566,6 +559,11 @@ export default function StreamerPage() {
   }
 
   const startStreaming = async () => {
+    if (!title.trim()) {
+      alert("Please enter a stream title")
+      return
+    }
+
     if (!roomDescription) {
       alert("Please enter a Room Description.")
       return
@@ -723,16 +721,90 @@ export default function StreamerPage() {
     return ""
   }
 
+  const stopStreaming = () => {
+    if (localVideoRef.current?.srcObject) {
+      const stream = localVideoRef.current.srcObject as MediaStream
+      stream.getTracks().forEach((track) => track.stop())
+      localVideoRef.current.srcObject = null
+    }
+    setIsStreaming(false)
+    setRoomId(null)
+    setViewers(0)
+  }
+
+  const toggleMic = () => {
+    setMicEnabled(!micEnabled)
+    if (localVideoRef.current?.srcObject) {
+      const stream = localVideoRef.current.srcObject as MediaStream
+      const audioTrack = stream.getAudioTracks()[0]
+      if (audioTrack) {
+        audioTrack.enabled = !micEnabled
+      }
+    }
+  }
+
+  const toggleVideo = () => {
+    setVideoEnabled(!videoEnabled)
+    if (localVideoRef.current?.srcObject) {
+      const stream = localVideoRef.current.srcObject as MediaStream
+      const videoTrack = stream.getVideoTracks()[0]
+      if (videoTrack) {
+        videoTrack.enabled = !videoEnabled
+      }
+    }
+  }
+
+  const shareStream = () => {
+    if (roomId || createdRoomId) {
+      const streamUrl = `${window.location.origin}/viewer?roomId=${roomId || createdRoomId}`
+      navigator.clipboard.writeText(streamUrl)
+      alert("Stream URL copied to clipboard!")
+    }
+  }
+
+  const handleUpdateSettings = async () => {
+    if (!title.trim()) {
+      alert("Please enter a stream title")
+      return
+    }
+
+    setIsUpdating(true)
+
+    try {
+      const updatedSettings = {
+        title: title.trim(),
+        description: description.trim(),
+        tags: streamSettings?.tags || [],
+        enableChat,
+      }
+
+      localStorage.setItem("streamSettings", JSON.stringify(updatedSettings))
+      setStreamSettings(updatedSettings)
+      setRoomDescription(updatedSettings.title) // Update room description
+      setHasUnsavedChanges(false)
+
+      log(`Stream settings updated: ${updatedSettings.title}`)
+
+      // Show success feedback
+      setTimeout(() => {
+        setIsUpdating(false)
+      }, 500)
+    } catch (error) {
+      console.error("Error updating settings:", error)
+      setIsUpdating(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
 
       <div className="container mx-auto p-4">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Content Column */}
-          <div className="lg:col-span-2 flex flex-col gap-4">
+          {/* Main Content */}
+          <div className="lg:col-span-2 space-y-4">
             {/* Video Section */}
-            <Card className="border-orange-200 dark:border-orange-800">
+            <Card className="">
               <CardContent className="p-0">
                 <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
                   <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
@@ -804,7 +876,11 @@ export default function StreamerPage() {
                   {/* Stream Info Overlay (Bottom Left) */}
                   {isStreaming && (
                     <div className="absolute bottom-4 left-4 flex items-center gap-2">
-                      <Badge variant="destructive" className="text-xs">
+                      <div className="bg-black/70 text-white px-3 py-1 rounded flex items-center gap-2">
+                        <Users className="w-4 h-4" />
+                        {formatNumber(viewers)} viewers
+                      </div>
+                      {/*<Badge variant="destructive" className="text-xs">
                         <div className="w-1.5 h-1.5 bg-white rounded-full mr-1 animate-pulse"></div>
                         LIVE
                       </Badge>
@@ -815,17 +891,107 @@ export default function StreamerPage() {
                       <Badge variant="secondary" className="text-xs bg-black/70 text-white">
                         <Clock className="w-3 h-3 mr-1" />
                         {streamDuration}
-                      </Badge>
+                      </Badge>*/}
                     </div>
                   )}
                 </div>
               </CardContent>
             </Card>
 
+            {/* About Section */}
+            <Card className="">
+              <CardHeader>
+                <CardTitle>About</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="title">Title</Label>
+                  <Input
+                    id="title"
+                    value={title}
+                    onChange={(e) => {
+                      setTitle(e.target.value)
+                      // Enable update button when title changes from saved settings
+                      if (streamSettings && e.target.value !== streamSettings.title) {
+                        setHasUnsavedChanges(true)
+                      } else if (
+                        streamSettings &&
+                        e.target.value === streamSettings.title &&
+                        description === streamSettings.description
+                      ) {
+                        setHasUnsavedChanges(false)
+                      }
+                    }}
+                    placeholder="Enter stream title"
+                    disabled={isStreaming}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={description}
+                    onChange={(e) => {
+                      setDescription(e.target.value)
+                      // Enable update button when description changes from saved settings
+                      if (streamSettings && e.target.value !== streamSettings.description) {
+                        setHasUnsavedChanges(true)
+                      } else if (
+                        streamSettings &&
+                        e.target.value === streamSettings.description &&
+                        title === streamSettings.title
+                      ) {
+                        setHasUnsavedChanges(false)
+                      }
+                    }}
+                    placeholder="Describe your stream"
+                    disabled={isStreaming}
+                    rows={3}
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch id="chat" checked={enableChat} onCheckedChange={setEnableChat} disabled={isStreaming} />
+                  <Label htmlFor="chat">Enable Chat</Label>
+                </div>
+                <div className="flex gap-2">
+                  {/* Update Button - only show when not streaming */}
+                  {!isStreaming && (
+                    <Button
+                      onClick={handleUpdateSettings}
+                      disabled={!hasUnsavedChanges || isUpdating}
+                      variant="outline"
+                      className="hover:bg-orange-50 dark:hover:bg-orange-950"
+                    >
+                      {isUpdating ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-orange-600 border-t-transparent rounded-full animate-spin mr-2" />
+                          Updating...
+                        </>
+                      ) : (
+                        "Update"
+                      )}
+                    </Button>
+                  )}
+
+                  {isStreaming ? (
+                    <>
+                      <Button onClick={stopStreamingCleanup} variant="destructive">
+                        <Square className="h-4 w-4 mr-2" />
+                        Stop Stream
+                      </Button>
+                      <Button onClick={shareStream} variant="outline">
+                        <Share className="h-4 w-4 mr-2" />
+                        Share
+                      </Button>
+                    </>
+                  ) : null}
+                </div>
+              </CardContent>
+            </Card>
             {/* Video Title and Description (YouTube-style) */}
-            <Card className="border-orange-200 dark:border-orange-800">
+            {/*<Card className="border-orange-200 dark:border-orange-800">
               <CardContent className="p-4">
-                {/* Title and Stream Controls */}
+                
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
                   <div className="flex-1">
                     <h1 className="text-2xl font-bold mb-2">{streamSettings?.title || "My Awesome Stream"}</h1>
@@ -895,7 +1061,7 @@ export default function StreamerPage() {
                   </div>
                 </div>
 
-                {/* Channel Info and Description */}
+                
                 <div className="flex items-start gap-4 mt-4 pb-4 border-b border-orange-200 dark:border-orange-800">
                   <Avatar className="h-12 w-12">
                     <AvatarImage src="/placeholder.svg" alt="Channel" />
@@ -908,7 +1074,7 @@ export default function StreamerPage() {
                   </div>
                 </div>
 
-                {/* Description (Collapsible) */}
+                
                 <div className="mt-4">
                   <button
                     onClick={() => setShowDescription(!showDescription)}
@@ -937,7 +1103,7 @@ export default function StreamerPage() {
               </CardContent>
             </Card>
 
-            {/* Performance Metrics */}
+            
             <Card className="border-orange-200 dark:border-orange-800">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -985,21 +1151,17 @@ export default function StreamerPage() {
                   </div>
                 </div>
               </CardContent>
-            </Card>
+            </Card>*/}
           </div>
 
-          {/* Right Column - Chat Only */}
-          <div className="space-y-4">
-            {/* Live Chat (YouTube-style) */}
-            <Card className="border-orange-200 dark:border-orange-800">
-              <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                <CardTitle className="text-lg">Live Chat</CardTitle>
-                <Badge variant={isStreaming ? "default" : "secondary"} className="text-xs">
-                  {isStreaming ? "LIVE" : "OFFLINE"}
-                </Badge>
+          {/* Chat Section */}
+          <div>
+            <Card className="h-[600px]">
+              <CardHeader>
+                <CardTitle>Chat ({viewers} viewers)</CardTitle>
               </CardHeader>
-              <CardContent className="p-0 h-[600px]">
-                <LiveChat />
+              <CardContent className="p-0 h-[calc(100%-70px)]">
+                {enableChat ? <LiveChat /> : <div className="p-4 text-center text-muted-foreground">Chat disabled</div>}
               </CardContent>
             </Card>
           </div>

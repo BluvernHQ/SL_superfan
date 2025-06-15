@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -11,28 +10,20 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Play, Search, Settings, User, LogOut, Home, Tv } from "lucide-react"
+import { Play, User, LogOut, Home, Tv } from "lucide-react"
 import Link from "next/link"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, signOut } from "firebase/auth"
 import { useRouter } from "next/navigation"
 
-interface NavigationProps {
-  onGoLive?: () => void
-}
-
-export function Navigation({ onGoLive }: NavigationProps) {
-  const [searchQuery, setSearchQuery] = useState("")
+export function Navigation() {
   const [user, setUser] = useState<any>(null)
-  const [isAuthChecking, setIsAuthChecking] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
-      setIsAuthChecking(false)
     })
-
     return () => unsubscribe()
   }, [])
 
@@ -46,12 +37,8 @@ export function Navigation({ onGoLive }: NavigationProps) {
   }
 
   const getUserDisplayName = () => {
-    if (user?.displayName) {
-      return user.displayName
-    }
-    if (user?.email) {
-      return user.email.split("@")[0]
-    }
+    if (user?.displayName) return user.displayName
+    if (user?.email) return user.email.split("@")[0]
     return "User"
   }
 
@@ -61,7 +48,7 @@ export function Navigation({ onGoLive }: NavigationProps) {
   }
 
   return (
-    <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <nav className="border-b bg-background/95 backdrop-blur">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -76,81 +63,56 @@ export function Navigation({ onGoLive }: NavigationProps) {
 
           {/* Navigation Links */}
           <div className="hidden md:flex items-center space-x-6">
-            <Link
-              href="/"
-              className="flex items-center space-x-1 text-sm font-medium hover:text-primary transition-colors"
-            >
+            <Link href="/" className="flex items-center space-x-1 text-sm font-medium hover:text-primary">
               <Home className="w-4 h-4" />
               <span>Home</span>
             </Link>
           </div>
 
-          {/* Search */}
-          <div className="flex-1 max-w-md mx-8">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-              <Input
-                placeholder="Search streams, streamers..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-          </div>
-
-          {/* Right Side */}
+          {/* User Menu */}
           <div className="flex items-center space-x-4">
-            {/* User Menu or Login Button */}
-            {!isAuthChecking &&
-              (user ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={user.photoURL || "/images/streamer-avatar.png"} alt="User" />
-                        <AvatarFallback>{getUserInitials()}</AvatarFallback>
-                      </Avatar>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-56" align="end" forceMount>
-                    <div className="flex items-center justify-start gap-2 p-2">
-                      <div className="flex flex-col space-y-1 leading-none">
-                        <p className="font-medium">{getUserDisplayName()}</p>
-                        <p className="w-[200px] truncate text-sm text-muted-foreground">{user.email}</p>
-                      </div>
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+                    <Avatar className="h-8 w-8">
+                      <AvatarImage src={user.photoURL || "/placeholder.svg"} alt="User" />
+                      <AvatarFallback>{getUserInitials()}</AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end">
+                  <div className="flex items-center justify-start gap-2 p-2">
+                    <div className="flex flex-col space-y-1 leading-none">
+                      <p className="font-medium">{getUserDisplayName()}</p>
+                      <p className="w-[200px] truncate text-sm text-muted-foreground">{user.email}</p>
                     </div>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href="/streamer" className="flex items-center">
-                        <Tv className="mr-2 h-4 w-4" />
-                        <span>Creator Dashboard</span>
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href={`/profile/${getUserDisplayName()}`} className="flex items-center">
-                        <User className="mr-2 h-4 w-4" />
-                        <span>Profile</span>
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Settings className="mr-2 h-4 w-4" />
-                      <span>Settings</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleSignOut}>
-                      <LogOut className="mr-2 h-4 w-4" />
-                      <span>Log out</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                <Button
-                  asChild
-                  className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-                >
-                  <Link href="/login">Sign In</Link>
-                </Button>
-              ))}
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/streamer" className="flex items-center">
+                      <Tv className="mr-2 h-4 w-4" />
+                      <span>Stream Dashboard</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href={`/profile/${getUserDisplayName()}`} className="flex items-center">
+                      <User className="mr-2 h-4 w-4" />
+                      <span>Profile</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    <span>Log out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button asChild className="bg-gradient-to-r from-orange-600 to-orange-500">
+                <Link href="/login">Sign In</Link>
+              </Button>
+            )}
           </div>
         </div>
       </div>

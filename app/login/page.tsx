@@ -197,7 +197,7 @@ export default function LoginPage() {
         </div>
 
         {/* Main Card */}
-        <Card className="border-orange-200 dark:border-orange-800 shadow-xl backdrop-blur-sm bg-white/95 dark:bg-card/95">
+        <Card className="shadow-xl backdrop-blur-sm bg-white/95 dark:bg-card/95">
           <CardHeader className="space-y-1 pb-4">
             <CardTitle className="text-2xl text-center">Welcome Back</CardTitle>
             <CardDescription className="text-center">

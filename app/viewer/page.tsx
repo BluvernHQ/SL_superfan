@@ -567,7 +567,7 @@ export default function ViewerPage() {
           <div className="lg:col-span-3 flex flex-col gap-4">
             {/* Room ID Input (only show if no roomId in URL) */}
             {!roomIdFromUrl && (
-              <Card className="border-orange-200 dark:border-orange-800">
+              <Card className="">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2">
                     <Input
@@ -597,7 +597,7 @@ export default function ViewerPage() {
             )}
 
             {/* Main Video Section */}
-            <Card className="flex-1 border-orange-200 dark:border-orange-800">
+            <Card className="flex-1">
               <CardContent className="p-0">
                 <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
                   {/* Video Player */}
@@ -740,7 +740,7 @@ export default function ViewerPage() {
             </Card>
 
             {/* Recommended Streams Section */}
-            <Card className="border-orange-200 dark:border-orange-800">
+            <Card className="">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Recommended Streams</CardTitle>
               </CardHeader>
@@ -800,7 +800,7 @@ export default function ViewerPage() {
 
           {/* Right Column - Chat */}
           <div className="lg:col-span-1">
-            <Card className="border-orange-200 dark:border-orange-800 h-[calc(100vh-120px)]">
+            <Card className="h-[calc(100vh-120px)]">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Live Chat</CardTitle>
               </CardHeader>

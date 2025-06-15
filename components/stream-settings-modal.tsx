@@ -1,21 +1,16 @@
 "use client"
 
-import { useState } from "react"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
+import type React from "react"
+
+import { useState, useEffect } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
-import { X } from "lucide-react"
+import { X, Plus } from "lucide-react"
 
 interface StreamSettingsModalProps {
   open: boolean
@@ -25,149 +20,162 @@ interface StreamSettingsModalProps {
 export function StreamSettingsModal({ open, onOpenChange }: StreamSettingsModalProps) {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
-  const [tagsInput, setTagsInput] = useState("")
+  const [tags, setTags] = useState<string[]>([])
+  const [newTag, setNewTag] = useState("")
   const [enableChat, setEnableChat] = useState(true)
-  const [errors, setErrors] = useState<{ title?: string; description?: string }>({})
 
-  // Parse tags from comma-separated input
-  const tags = tagsInput
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter((tag) => tag.length > 0)
-
-  const validateForm = () => {
-    const newErrors: { title?: string; description?: string } = {}
-
-    if (!title.trim()) {
-      newErrors.title = "Stream title is required"
-    }
-
-    if (!description.trim()) {
-      newErrors.description = "Stream description is required"
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleStartLive = () => {
-    if (validateForm()) {
-      // Store stream settings in localStorage or pass to streamer page
-      const streamSettings = {
-        title: title.trim(),
-        description: description.trim(),
-        tags: tags,
-        enableChat,
+  // Load saved settings on mount
+  useEffect(() => {
+    const savedSettings = localStorage.getItem("streamSettings")
+    if (savedSettings) {
+      try {
+        const settings = JSON.parse(savedSettings)
+        setTitle(settings.title || "")
+        setDescription(settings.description || "")
+        setTags(settings.tags || [])
+        setEnableChat(settings.enableChat ?? true)
+      } catch (error) {
+        console.error("Error loading stream settings:", error)
       }
-      localStorage.setItem("streamSettings", JSON.stringify(streamSettings))
+    }
+  }, [open])
 
-      // Redirect to streamer page
-      window.location.href = "/streamer"
+  const handleAddTag = () => {
+    if (newTag.trim() && !tags.includes(newTag.trim()) && tags.length < 5) {
+      setTags([...tags, newTag.trim()])
+      setNewTag("")
     }
   }
 
-  const removeTag = (indexToRemove: number) => {
-    const newTags = tags.filter((_, index) => index !== indexToRemove)
-    setTagsInput(newTags.join(", "))
+  const handleRemoveTag = (tagToRemove: string) => {
+    setTags(tags.filter((tag) => tag !== tagToRemove))
+  }
+
+  const handleSave = () => {
+    if (!title.trim()) {
+      alert("Please enter a stream title")
+      return
+    }
+
+    const settings = {
+      title: title.trim(),
+      description: description.trim(),
+      tags,
+      enableChat,
+    }
+
+    localStorage.setItem("streamSettings", JSON.stringify(settings))
+    onOpenChange(false)
+
+    // Reload the page to apply new settings
+    window.location.reload()
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      handleAddTag()
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent
+        className="sm:max-w-[500px]"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
+        hideCloseButton={true}
+      >
         <DialogHeader>
           <DialogTitle>Stream Settings</DialogTitle>
-          <DialogDescription>Configure your stream settings before going live.</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {/* Stream Title */}
+        <div className="space-y-6">
+          {/* Title */}
           <div className="space-y-2">
-            <Label htmlFor="title">
-              Stream Title <span className="text-red-500">*</span>
-            </Label>
+            <Label htmlFor="stream-title">Stream Title *</Label>
             <Input
-              id="title"
+              id="stream-title"
               placeholder="Enter your stream title"
               value={title}
-              onChange={(e) => {
-                setTitle(e.target.value)
-                if (errors.title) {
-                  setErrors((prev) => ({ ...prev, title: undefined }))
-                }
-              }}
-              className={errors.title ? "border-red-500" : ""}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={100}
             />
-            {errors.title && <p className="text-sm text-red-500">{errors.title}</p>}
+            <p className="text-xs text-muted-foreground">{title.length}/100 characters</p>
           </div>
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="description">
-              Description <span className="text-red-500">*</span>
-            </Label>
+            <Label htmlFor="stream-description">Description</Label>
             <Textarea
-              id="description"
+              id="stream-description"
               placeholder="Describe what you'll be streaming..."
               value={description}
-              onChange={(e) => {
-                setDescription(e.target.value)
-                if (errors.description) {
-                  setErrors((prev) => ({ ...prev, description: undefined }))
-                }
-              }}
+              onChange={(e) => setDescription(e.target.value)}
+              maxLength={500}
               rows={3}
-              className={errors.description ? "border-red-500" : ""}
             />
-            {errors.description && <p className="text-sm text-red-500">{errors.description}</p>}
+            <p className="text-xs text-muted-foreground">{description.length}/500 characters</p>
           </div>
 
           {/* Tags */}
           <div className="space-y-2">
-            <Label htmlFor="tags">Tags</Label>
-            <Input
-              id="tags"
-              placeholder="gaming, music, art, cooking (separate with commas)"
-              value={tagsInput}
-              onChange={(e) => setTagsInput(e.target.value)}
-            />
-            <p className="text-xs text-muted-foreground">
-              Separate tags with commas. Press Enter or continue typing to create tags.
-            </p>
+            <Label>Tags (Optional)</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Add a tag..."
+                value={newTag}
+                onChange={(e) => setNewTag(e.target.value)}
+                onKeyPress={handleKeyPress}
+                maxLength={20}
+                disabled={tags.length >= 5}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleAddTag}
+                disabled={!newTag.trim() || tags.includes(newTag.trim()) || tags.length >= 5}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
 
-            {/* Display parsed tags */}
             {tags.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
-                {tags.map((tag, index) => (
-                  <Badge key={index} variant="secondary" className="flex items-center gap-1">
+                {tags.map((tag) => (
+                  <Badge key={tag} variant="secondary" className="flex items-center gap-1">
                     {tag}
-                    <button
-                      type="button"
-                      onClick={() => removeTag(index)}
-                      className="ml-1 hover:bg-muted-foreground/20 rounded-full p-0.5"
-                    >
+                    <button type="button" onClick={() => handleRemoveTag(tag)} className="ml-1 hover:text-destructive">
                       <X className="h-3 w-3" />
                     </button>
                   </Badge>
                 ))}
               </div>
             )}
+
+            <p className="text-xs text-muted-foreground">Add up to 5 tags to help viewers find your stream</p>
           </div>
 
-          {/* Enable Chat */}
-          <div className="flex items-center space-x-2">
-            <Switch id="chat" checked={enableChat} onCheckedChange={setEnableChat} />
-            <Label htmlFor="chat">Enable Chat</Label>
+          {/* Chat Settings */}
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="enable-chat">Enable Chat</Label>
+              <p className="text-sm text-muted-foreground">Allow viewers to chat during your stream</p>
+            </div>
+            <Switch id="enable-chat" checked={enableChat} onCheckedChange={setEnableChat} />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex justify-end pt-4">
+            <Button
+              onClick={handleSave}
+              className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+            >
+              Save Settings
+            </Button>
           </div>
         </div>
-
-        <DialogFooter>
-          <Button
-            onClick={handleStartLive}
-            className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-          >
-            Start Live Stream
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
