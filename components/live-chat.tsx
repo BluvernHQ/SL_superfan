@@ -20,85 +20,96 @@ interface ChatMessage {
   avatar?: string
 }
 
-export function LiveChat() {
-  // Update the mock messages to only use usernames
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "1",
-      username: "GamerFan123",
-      message: "Amazing gameplay! 🔥",
-      timestamp: new Date(Date.now() - 60000),
-      type: "message",
-      avatar: "/placeholder.svg?height=32&width=32",
-    },
-    {
-      id: "2",
-      username: "StreamLover",
-      message: "Just followed! Keep it up!",
-      timestamp: new Date(Date.now() - 45000),
-      type: "follow",
-      avatar: "/placeholder.svg?height=32&width=32",
-    },
-    {
-      id: "3",
-      username: "ProPlayer99",
-      message: "That was an epic move!",
-      timestamp: new Date(Date.now() - 30000),
-      type: "message",
-      avatar: "/placeholder.svg?height=32&width=32",
-    },
-    {
-      id: "4",
-      username: "SupporterX",
-      message: "Thanks for the great content!",
-      timestamp: new Date(Date.now() - 15000),
-      type: "donation",
-      amount: 5,
-      avatar: "/placeholder.svg?height=32&width=32",
-    },
-  ])
+interface LiveChatProps {
+  roomId: string | null
+  currentUserDisplayName: string
+  enableChat: boolean
+}
 
+export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveChatProps) {
+  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [newMessage, setNewMessage] = useState("")
   const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const wsRef = useRef<WebSocket | null>(null)
 
-  // Simulate new messages
+  const CHAT_WEBSOCKET_URL = "wss://superfan.alterwork.in/chat"
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      const randomMessages = [
-        "Great stream!",
-        "Love this game!",
-        "You got this!",
-        "Amazing skills!",
-        "Keep going!",
-        "This is so cool!",
-        "Best streamer ever!",
-        "Can you play my favorite song?",
-        "How long have you been playing?",
-        "Your setup is awesome!",
-      ]
-
-      // Update the random usernames array
-      const randomUsernames = [
-        "ChatUser" + Math.floor(Math.random() * 1000),
-        "Viewer" + Math.floor(Math.random() * 1000),
-        "Fan" + Math.floor(Math.random() * 1000),
-        "Player" + Math.floor(Math.random() * 1000),
-      ]
-
-      const newMsg: ChatMessage = {
-        id: Date.now().toString(),
-        username: randomUsernames[Math.floor(Math.random() * randomUsernames.length)],
-        message: randomMessages[Math.floor(Math.random() * randomMessages.length)],
-        timestamp: new Date(),
-        type: Math.random() > 0.9 ? "follow" : "message",
-        avatar: `/placeholder.svg?height=32&width=32&query=avatar${Math.floor(Math.random() * 10)}`,
+    if (!roomId || !enableChat) {
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
       }
+      setMessages([]) // Clear messages if chat is disabled or room is not set
+      return
+    }
 
-      setMessages((prev) => [...prev.slice(-50), newMsg])
-    }, 3000)
+    // Close existing connection if any
+    if (wsRef.current) {
+      wsRef.current.close()
+    }
 
-    return () => clearInterval(interval)
-  }, [])
+    const ws = new WebSocket(CHAT_WEBSOCKET_URL)
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      console.log("WebSocket connected for room:", roomId)
+      // Send raw room ID as the first initialization message
+      ws.send(roomId)
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (data.user && data.message) {
+          const receivedMessage: ChatMessage = {
+            id: Date.now().toString() + Math.random(), // Unique ID
+            username: data.user,
+            message: data.message,
+            timestamp: new Date(),
+            type: "message", // Assuming all incoming are messages for now
+            avatar: `/placeholder.svg?height=32&width=32&query=avatar-${data.user.charAt(0)}`,
+          }
+          setMessages((prev) => [...prev, receivedMessage])
+        } else {
+          console.warn("Received unexpected message format:", data)
+        }
+      } catch (error) {
+        console.error("Failed to parse WebSocket message:", error, event.data)
+      }
+    }
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error)
+    }
+
+    ws.onclose = (event) => {
+      console.log("WebSocket closed:", event.code, event.reason)
+      if (!event.wasClean) {
+        console.warn("WebSocket connection unexpectedly closed. Attempting to reconnect...")
+        // Simple reconnect logic, could be more robust with backoff
+        setTimeout(() => {
+          if (roomId && enableChat) {
+            // Only try to reconnect if still in a room and chat is enabled
+            // This prevents infinite reconnects if the room is gone or chat is intentionally off
+            if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
+              // Only reconnect if no other connection is pending/open
+              console.log("Attempting WebSocket reconnect...")
+              const newWs = new WebSocket(CHAT_WEBSOCKET_URL)
+              wsRef.current = newWs
+            }
+          }
+        }, 3000) // Try to reconnect after 3 seconds
+      }
+    }
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+      }
+    }
+  }, [roomId, enableChat]) // Reconnect if roomId or enableChat changes
 
   // Auto scroll to bottom for new messages
   useEffect(() => {
@@ -112,19 +123,32 @@ export function LiveChat() {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newMessage.trim()) return
-
-    const message: ChatMessage = {
-      id: Date.now().toString(),
-      username: "You",
-      message: newMessage,
-      timestamp: new Date(),
-      type: "message",
-      avatar: "/placeholder.svg?height=32&width=32",
+    if (!newMessage.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return
     }
 
-    setMessages((prev) => [...prev, message])
-    setNewMessage("")
+    const messageToSend = {
+      user: currentUserDisplayName,
+      message: newMessage.trim(),
+    }
+
+    try {
+      wsRef.current.send(JSON.stringify(messageToSend))
+      // Optimistically add message to UI
+      const sentMessage: ChatMessage = {
+        id: Date.now().toString(),
+        username: currentUserDisplayName,
+        message: newMessage.trim(),
+        timestamp: new Date(),
+        type: "message",
+        avatar: `/placeholder.svg?height=32&width=32&query=avatar-${currentUserDisplayName.charAt(0)}`,
+      }
+      setMessages((prev) => [...prev, sentMessage])
+      setNewMessage("")
+    } catch (error) {
+      console.error("Failed to send message via WebSocket:", error)
+      // Optionally, show an error to the user
+    }
   }
 
   const formatTime = (date: Date) => {
@@ -136,6 +160,11 @@ export function LiveChat() {
       {/* Chat Messages */}
       <ScrollArea className="flex-1 border-b" ref={scrollAreaRef}>
         <div className="p-4 space-y-4">
+          {messages.length === 0 && (
+            <div className="text-center text-muted-foreground py-4">
+              {enableChat ? "No messages yet. Be the first to say hi!" : "Chat is disabled for this stream."}
+            </div>
+          )}
           {messages.map((msg) => (
             <div key={msg.id} className="flex gap-3">
               <Avatar className="h-8 w-8 flex-shrink-0">
@@ -145,9 +174,8 @@ export function LiveChat() {
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  {/* Update the message rendering to show @username */}
                   <span
-                    className={`font-medium text-sm ${msg.username === "You" ? "text-orange-600 dark:text-orange-400" : ""}`}
+                    className={`font-medium text-sm ${msg.username === currentUserDisplayName ? "text-orange-600 dark:text-orange-400" : ""}`}
                   >
                     @{msg.username}
                   </span>
@@ -184,24 +212,28 @@ export function LiveChat() {
       <div className="p-3 bg-background">
         <form onSubmit={handleSendMessage} className="flex gap-2">
           <Avatar className="h-8 w-8 flex-shrink-0">
-            <AvatarImage src="/placeholder.svg?height=32&width=32" alt="You" />
-            <AvatarFallback>Y</AvatarFallback>
+            <AvatarImage
+              src={`/placeholder.svg?height=32&width=32&query=avatar-${currentUserDisplayName.charAt(0)}`}
+              alt={currentUserDisplayName}
+            />
+            <AvatarFallback>{currentUserDisplayName.charAt(0)}</AvatarFallback>
           </Avatar>
 
           <div className="flex-1 flex gap-2 items-center">
             <div className="relative flex-1">
-              {/* Update the chat input placeholder */}
               <Input
-                placeholder="Chat as @You..."
+                placeholder={`Chat as @${currentUserDisplayName}...`}
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 className="pr-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
+                disabled={!enableChat || !roomId || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN}
               />
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground"
+                disabled={!enableChat || !roomId || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN}
               >
                 <Smile className="h-4 w-4" />
               </Button>
@@ -211,6 +243,13 @@ export function LiveChat() {
               type="submit"
               size="sm"
               className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+              disabled={
+                !enableChat ||
+                !roomId ||
+                !newMessage.trim() ||
+                !wsRef.current ||
+                wsRef.current.readyState !== WebSocket.OPEN
+              }
             >
               <Send className="h-4 w-4" />
             </Button>

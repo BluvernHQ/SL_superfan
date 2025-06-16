@@ -28,21 +28,34 @@ export default function HomePage() {
   const fetchLiveStreams = async () => {
     try {
       setIsLoadingStreams(true)
+      const headers = await getAuthHeaders()
+
       const response = await fetch("https://superfan.alterwork.in/api/get_live", {
         method: "GET",
-        headers: { "Content-Type": "application/json" },
+        headers,
       })
 
       if (response.ok) {
         const data = await response.json()
-        const streamsArray = Object.entries(data.live || {}).map(([sessionId, streamData]: [string, any]) => ({
-          sessionId,
-          ...streamData,
-          id: streamData.roomId,
-          title: `${streamData.name}'s Live Stream`,
-          streamer: streamData.name,
-          viewers: Math.floor(Math.random() * 2000) + 100,
-        }))
+        console.log("Live streams data:", data) // Debug log
+
+        const streamsArray = Object.entries(data.live || {}).map(([sessionId, streamData]: [string, any]) => {
+          const thumbnailUrl = `/files/thumbnails/${streamData.roomId}.jpg`
+          console.log("Generated thumbnail URL:", thumbnailUrl) // Debug log
+
+          return {
+            sessionId,
+            ...streamData,
+            id: streamData.roomId,
+            title: streamData.title || `${streamData.name}'s Live Stream`, // Use title from API, fallback to name
+            streamer: streamData.name,
+            viewers: streamData.views || 0, // Use views from API instead of random number
+            likes: streamData.likes || 0, // Also include likes from API
+            thumbnail: thumbnailUrl,
+          }
+        })
+
+        console.log("Processed streams array:", streamsArray) // Debug log
         setLiveStreams(streamsArray)
       }
     } catch (error) {
@@ -52,37 +65,87 @@ export default function HomePage() {
     }
   }
 
-  // Mock users data - replace with actual API call
-  const mockUsers = [
-    {
-      id: 1,
-      username: "GamerPro123",
-      isLive: true,
-      totalSessions: 45,
-      followers: 2400,
-    },
-    {
-      id: 2,
-      username: "MusicMaster",
-      isLive: false,
-      totalSessions: 32,
-      followers: 1800,
-    },
-    {
-      id: 3,
-      username: "ArtCreator",
-      isLive: true,
-      totalSessions: 28,
-      followers: 950,
-    },
-  ]
+  const fetchAllUsers = async () => {
+    try {
+      const headers = await getAuthHeaders()
+
+      const response = await fetch("https://superfan.alterwork.in/api/fetch_users", {
+        method: "GET",
+        headers,
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("API Response:", data) // Debug log to see the actual structure
+
+        let usersArray = []
+
+        // Handle different possible response structures
+        if (Array.isArray(data)) {
+          // Direct array response
+          usersArray = data
+        } else if (data.users && Array.isArray(data.users)) {
+          // Response wrapped in a users property
+          usersArray = data.users
+        } else if (data.data && Array.isArray(data.data)) {
+          // Response wrapped in a data property
+          usersArray = data.data
+        } else {
+          console.error("Unexpected API response structure:", data)
+          setAllUsers([])
+          return
+        }
+
+        // Transform the API response to match our component structure
+        const transformedUsers = usersArray.map((userData: any, index: number) => ({
+          id: index + 1,
+          username: userData.display_name || userData.username || `User${index + 1}`,
+          isLive: userData.status !== "notlive",
+          totalSessions: userData.sessions || 0,
+          followers: userData.followers || 0,
+        }))
+
+        setAllUsers(transformedUsers)
+      } else {
+        console.error("Failed to fetch users:", response.status, response.statusText)
+        // Fallback to empty array if API fails
+        setAllUsers([])
+      }
+    } catch (error) {
+      console.error("Error fetching users:", error)
+      // Fallback to empty array if API fails
+      setAllUsers([])
+    }
+  }
+
+  // Helper function to get auth headers
+  const getAuthHeaders = async () => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    }
+
+    if (user) {
+      try {
+        const { getIdToken } = await import("firebase/auth")
+        const authToken = await getIdToken(user)
+        headers["Authorization"] = `Bearer ${authToken}`
+      } catch (tokenError) {
+        console.log("Error getting Firebase token:", tokenError)
+      }
+    }
+
+    return headers
+  }
 
   useEffect(() => {
     fetchLiveStreams()
-    setAllUsers(mockUsers)
-    const interval = setInterval(fetchLiveStreams, 30000)
+    fetchAllUsers()
+    const interval = setInterval(() => {
+      fetchLiveStreams()
+      fetchAllUsers()
+    }, 30000) // Refresh every 30 seconds
     return () => clearInterval(interval)
-  }, [])
+  }, [user])
 
   const handleStartLive = () => {
     if (user) {
@@ -136,9 +199,27 @@ export default function HomePage() {
               liveStreams.map((stream) => (
                 <Card key={stream.sessionId} className="cursor-pointer hover:shadow-lg transition-shadow">
                   <div className="relative">
-                    <div className="w-full h-48 bg-black rounded-t-lg flex items-center justify-center">
-                      <Play className="w-12 h-12 text-white opacity-50" />
-                    </div>
+                    <img
+                      src={stream.thumbnail || "/placeholder.svg"}
+                      alt={stream.title}
+                      className="w-full h-48 object-cover rounded-t-lg"
+                      onLoad={(e) => {
+                        console.log("Thumbnail loaded successfully:", e.currentTarget.src)
+                      }}
+                      onError={(e) => {
+                        console.error("Thumbnail failed to load:", e.currentTarget.src)
+                        // Try the full URL first
+                        const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.roomId}.jpg`
+                        if (e.currentTarget.src !== fullUrl) {
+                          console.log("Trying full URL:", fullUrl)
+                          e.currentTarget.src = fullUrl
+                        } else {
+                          // If full URL also fails, use placeholder
+                          console.log("Full URL also failed, using placeholder")
+                          e.currentTarget.src = "/placeholder.svg?height=192&width=320"
+                        }
+                      }}
+                    />
                     <Badge variant="destructive" className="absolute top-2 left-2 text-xs">
                       <div className="w-1.5 h-1.5 bg-white rounded-full mr-1"></div>
                       LIVE

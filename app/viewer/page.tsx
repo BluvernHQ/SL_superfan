@@ -5,13 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Heart, Share, Users, Eye, Play, Square, VolumeX, Volume2 } from "lucide-react"
+import { Heart, Share, Users, Eye, Play, Square, VolumeX, Volume2, ChevronDown, ChevronUp } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { LiveChat } from "@/components/live-chat"
 import { ShareModal } from "@/components/share-modal"
 import { useSearchParams } from "next/navigation"
 import { auth } from "@/lib/firebase"
-import { getIdToken } from "firebase/auth"
+import { getIdToken, onAuthStateChanged } from "firebase/auth"
 
 // Video Player Component
 const VideoPlayer = ({ stream, muted, volume }: { stream: MediaStream; muted: boolean; volume: number }) => {
@@ -52,6 +52,20 @@ export default function ViewerPage() {
   const [isLoadingSidebarStreams, setIsLoadingSidebarStreams] = useState(true)
   const [showDescription, setShowDescription] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
+  const [currentUserDisplayName, setCurrentUserDisplayName] = useState("Guest") // Default for chat
+  const [isChatEnabled, setIsChatEnabled] = useState(true) // State for chat enablement
+  const [isLiking, setIsLiking] = useState(false)
+
+  // Stream details from API
+  const [streamDetails, setStreamDetails] = useState<{
+    title: string
+    description: string
+    streamerName: string
+    streamerUID: string
+    startTime: string
+    chatEnabled: boolean // Add chatEnabled to stream details
+  } | null>(null)
+  const [isLoadingStreamDetails, setIsLoadingStreamDetails] = useState(false)
 
   const remoteVideosRef = useRef<HTMLDivElement>(null)
 
@@ -84,12 +98,180 @@ export default function ViewerPage() {
     return headers
   }
 
+  // Get current user's display name for chat
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setCurrentUserDisplayName(user.displayName || user.email?.split("@")[0] || "You")
+      } else {
+        setCurrentUserDisplayName("Guest")
+      }
+    })
+    return () => unsubscribe()
+  }, [])
+
+  // Function to fetch stream details
+  const fetchStreamDetails = async (roomId: string) => {
+    console.log("Attempting to fetch stream details for roomId:", roomId) // Debug log
+    try {
+      setIsLoadingStreamDetails(true)
+      const headers = await getAuthHeaders()
+
+      const response = await fetch("https://superfan.alterwork.in/api/get_live_det", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            room_id: roomId,
+          },
+        }),
+      })
+
+      console.log("Raw response from get_live_det:", response) // Debug log
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Stream details data from API:", data) // Debug log
+
+        setStreamDetails({
+          title: data.title || `Live Stream - Room ${roomId}`,
+          description: data.description || "",
+          streamerName: data.name || "Streamer",
+          streamerUID: data.UID || "",
+          startTime: data.start || "",
+          chatEnabled: data.chatEnabled !== undefined ? data.chatEnabled : true, // Default to true if not provided
+        })
+        setIsChatEnabled(data.chatEnabled !== undefined ? data.chatEnabled : true) // Update chat enabled state
+
+        console.log("Stream details state after update:", {
+          title: data.title || `Live Stream - Room ${roomId}`,
+          description: data.description || "",
+          streamerName: data.name || "Streamer",
+          streamerUID: data.UID || "",
+          startTime: data.start || "",
+          chatEnabled: data.chatEnabled !== undefined ? data.chatEnabled : true,
+        }) // Debug log
+
+        // Also update likes from the API response
+        if (data.likes !== undefined) {
+          setLikes(data.likes)
+        }
+      } else {
+        console.error("Failed to fetch stream details:", response.status, response.statusText)
+        // Set fallback details
+        setStreamDetails({
+          title: `Live Stream - Room ${roomId}`,
+          description: "",
+          streamerName: "Streamer",
+          streamerUID: "",
+          startTime: "",
+          chatEnabled: true, // Fallback to true
+        })
+        setIsChatEnabled(true) // Fallback to true
+      }
+    } catch (error) {
+      console.error("Error fetching stream details:", error)
+      // Set fallback details
+      setStreamDetails({
+        title: `Live Stream - Room ${roomId}`,
+        description: "",
+        streamerName: "Streamer",
+        streamerUID: "",
+        startTime: "",
+        chatEnabled: true, // Fallback to true
+      })
+      setIsChatEnabled(true) // Fallback to true
+    } finally {
+      setIsLoadingStreamDetails(false)
+    }
+  }
+
+  // Function to increment view count when viewer connects
+  const incrementViewCount = async (sessionId: string, roomId: string) => {
+    try {
+      const headers = await getAuthHeaders()
+
+      const response = await fetch("https://superfan.alterwork.in/api/create_view", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            session_id: sessionId,
+            room_id: roomId,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        log(`View count incremented successfully: ${JSON.stringify(data)}`)
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        log(`Failed to increment view count: ${response.status} - ${errorData.message || errorData.reason}`)
+      }
+    } catch (error: any) {
+      log(`Error incrementing view count: ${error.message}`)
+    }
+  }
+
+  const fetchViewCount = async () => {
+    if (!roomId) return
+
+    try {
+      const headers = await getAuthHeaders()
+
+      const response = await fetch("https://superfan.alterwork.in/api/get_views", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            room_id: roomId,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("View count data:", data) // Debug log
+
+        // Update the current viewers count with real data from API
+        if (data.views !== undefined) {
+          setCurrentViewers(data.views)
+        }
+      } else {
+        console.error("Failed to fetch view count:", response.status, response.statusText)
+      }
+    } catch (error) {
+      console.error("Error fetching view count:", error)
+    }
+  }
+
   // Start watching automatically if room ID is in URL
   useEffect(() => {
     if (roomIdFromUrl && !isWatching) {
       handleWatchStream()
     }
   }, [roomIdFromUrl])
+
+  // Fetch stream details when roomId changes
+  useEffect(() => {
+    console.log("useEffect triggered for roomId:", roomId) // Debug log
+    if (roomId) {
+      fetchStreamDetails(roomId)
+    }
+  }, [roomId])
+
+  // Fetch view count periodically when watching
+  useEffect(() => {
+    if (isWatching && roomId) {
+      // Fetch immediately
+      fetchViewCount()
+
+      // Then fetch every 10 seconds
+      const interval = setInterval(fetchViewCount, 10000)
+      return () => clearInterval(interval)
+    }
+  }, [isWatching, roomId])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -116,7 +298,7 @@ export default function ViewerPage() {
       })
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ reason: "Unknown error, not JSON" }))
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
         log(`Proxy Error: ${response.status} - ${errorData.error?.reason || response.statusText}`)
         throw new Error(`Proxy error: ${response.status} - ${errorData.error?.reason || response.statusText}`)
       }
@@ -385,6 +567,12 @@ export default function ViewerPage() {
           ...prev,
           [publisherId]: { stream: event.streams[0] },
         }))
+
+        // Increment view count when video stream is successfully received
+        if (janusSessionIdRef.current && roomId) {
+          incrementViewCount(janusSessionIdRef.current, roomId)
+          log(`Called incrementViewCount for session ${janusSessionIdRef.current} and room ${roomId}`)
+        }
       }
     }
 
@@ -438,14 +626,10 @@ export default function ViewerPage() {
     if (feedInfo) {
       if (feedInfo.pc) feedInfo.pc.close()
       if (feedInfo.handleId && janusSessionIdRef.current) {
-        sendToProxy(
-          `/${janusSessionIdRef.current}/${feedInfo.handleId}
-        sendToProxy(\`/${janusSessionIdRef.current}/${feedInfo.handleId}`,
-          {
-            janus: "detach",
-            transaction: `detach_${publisherId}_${Date.now()}`,
-          },
-        ).catch((err) => log(`Error detaching feed handle ${feedInfo.handleId}: ${err.message}`))
+        sendToProxy(`/${janusSessionIdRef.current}/${feedInfo.handleId}`, {
+          janus: "detach",
+          transaction: `detachfailsub_${Date.now()}`,
+        }).catch((e) => log(`Error detaching failed feed handle: ${e}`))
       }
       delete remoteFeedsRef.current[publisherId]
     }
@@ -517,10 +701,72 @@ export default function ViewerPage() {
     })
   }
 
-  const handleLike = () => {
-    if (!hasLiked) {
-      setLikes((prev) => prev + 1)
-      setHasLiked(true)
+  async function handleLike() {
+    if (hasLiked || !roomId || isLiking) {
+      return
+    }
+    setIsLiking(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/create_like", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            room_id: roomId,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        setLikes((prev) => prev + 1)
+        setHasLiked(true)
+        log("Like successfully recorded.")
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        log(`Failed to record like: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to like stream: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      log(`Error recording like: ${error.message}`)
+      alert(`Error liking stream: ${error.message}`)
+    } finally {
+      setIsLiking(false)
+    }
+  }
+
+  // Add the `handleUnlike` function:
+  async function handleUnlike() {
+    if (!hasLiked || !roomId || isLiking) {
+      return
+    }
+    setIsLiking(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/remove_like", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            room_id: roomId,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        setLikes((prev) => Math.max(0, prev - 1)) // Ensure likes don't go below 0
+        setHasLiked(false)
+        log("Like successfully removed.")
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        log(`Failed to remove like: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to unlike stream: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      log(`Error removing like: ${error.message}`)
+      alert(`Error unliking stream: ${error.message}`)
+    } finally {
+      setIsLiking(false)
     }
   }
 
@@ -546,19 +792,29 @@ export default function ViewerPage() {
 
       if (response.ok) {
         const data = await response.json()
+        console.log("Sidebar streams data:", data) // Debug log
+
         // Convert the streams object to an array and filter out current room
         const streamsArray = Object.entries(data.live || {})
           .filter(([sessionId, streamData]: [string, any]) => streamData.roomId !== roomId)
-          .map(([sessionId, streamData]: [string, any]) => ({
-            sessionId,
-            ...streamData,
-            id: streamData.roomId,
-            title: `${streamData.name}'s Stream`,
-            streamer: streamData.name,
-            viewers: Math.floor(Math.random() * 1000) + 50,
-            thumbnail: "/placeholder.svg?height=120&width=160",
-          }))
+          .map(([sessionId, streamData]: [string, any]) => {
+            const thumbnailUrl = `/files/thumbnails/${streamData.roomId}.jpg`
+            console.log("Generated sidebar thumbnail URL:", thumbnailUrl) // Debug log
+
+            return {
+              sessionId,
+              ...streamData,
+              id: streamData.roomId,
+              title: streamData.title || `${streamData.name}'s Stream`, // Use title from API
+              streamer: streamData.name,
+              viewers: streamData.views || 0, // Use real views from API
+              likes: streamData.likes || 0, // Include likes from API
+              thumbnail: thumbnailUrl,
+            }
+          })
           .slice(0, 5) // Show only top 5
+
+        console.log("Processed sidebar streams:", streamsArray) // Debug log
         setSidebarStreams(streamsArray)
       }
     } catch (error) {
@@ -571,7 +827,7 @@ export default function ViewerPage() {
   useEffect(() => {
     fetchSidebarStreams()
     // Poll for updates every 60 seconds
-    const interval = setInterval(fetchSidebarStreams, 60000)
+    const interval = setInterval(fetchSidebarStreams, 30000) // Update every 30 seconds
     return () => clearInterval(interval)
   }, [roomId])
 
@@ -581,6 +837,18 @@ export default function ViewerPage() {
     }
     return ""
   }
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return ""
+    try {
+      const date = new Date(dateString)
+      return date.toLocaleString()
+    } catch {
+      return ""
+    }
+  }
+
+  console.log("Current streamDetails state in render:", streamDetails) // Debug log
 
   return (
     <div className="min-h-screen bg-background">
@@ -693,40 +961,77 @@ export default function ViewerPage() {
                 </div>
 
                 {/* Stream Details */}
-                {isWatching && (
+                {(isWatching || streamDetails) && (
                   <div className="p-6 bg-card">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <h1 className="text-xl font-bold mb-3">Live Stream - Room {roomId}</h1>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
-                          <span className="flex items-center gap-1">
-                            <Eye className="w-4 h-4" />
-                            {formatNumber(currentViewers)} watching
-                          </span>
-                          <span>Live now</span>
-                          <Badge
-                            variant="outline"
-                            className="border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400"
-                          >
-                            Live Stream
-                          </Badge>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-gradient-to-r from-orange-600 to-orange-500 flex items-center justify-center text-white font-bold">
-                            S
+                        {isLoadingStreamDetails ? (
+                          <div className="animate-pulse">
+                            <div className="h-6 bg-muted rounded mb-3 w-3/4"></div>
+                            <div className="h-4 bg-muted rounded mb-2 w-1/2"></div>
+                            <div className="h-4 bg-muted rounded mb-4 w-1/3"></div>
                           </div>
-                          <div>
-                            <div className="font-medium">@Streamer</div>
-                            <div className="text-sm text-muted-foreground">Broadcasting live</div>
-                          </div>
-                        </div>
+                        ) : (
+                          <>
+                            <h1 className="text-xl font-bold mb-3">
+                              {streamDetails?.title || `Live Stream - Room ${roomId}`}
+                            </h1>
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
+                              <span className="flex items-center gap-1">
+                                <Eye className="w-4 h-4" />
+                                {formatNumber(currentViewers)} watching
+                              </span>
+                              <span>Live now</span>
+                              {streamDetails?.startTime && <span>Started {formatDate(streamDetails.startTime)}</span>}
+                              <Badge
+                                variant="outline"
+                                className="border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400"
+                              >
+                                Live Stream
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-3 mb-4">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-orange-600 to-orange-500 flex items-center justify-center text-white font-bold">
+                                {streamDetails?.streamerName?.charAt(0)?.toUpperCase() || "S"}
+                              </div>
+                              <div>
+                                <div className="font-medium">@{streamDetails?.streamerName || "Streamer"}</div>
+                                <div className="text-sm text-muted-foreground">Broadcasting live</div>
+                              </div>
+                            </div>
+
+                            {/* Description Section */}
+                            {streamDetails?.description && (
+                              <div className="mt-4">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => setShowDescription(!showDescription)}
+                                  className="p-0 h-auto font-medium text-sm hover:bg-transparent"
+                                >
+                                  Description
+                                  {showDescription ? (
+                                    <ChevronUp className="w-4 h-4 ml-1" />
+                                  ) : (
+                                    <ChevronDown className="w-4 h-4 ml-1" />
+                                  )}
+                                </Button>
+                                {showDescription && (
+                                  <div className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
+                                    {streamDetails.description}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <Button
                           variant={hasLiked ? "default" : "outline"}
                           size="sm"
-                          onClick={handleLike}
-                          disabled={hasLiked}
+                          onClick={hasLiked ? handleUnlike : handleLike} // Toggle between like and unlike
+                          disabled={isLiking || !roomId} // Disable while loading or if no room ID
                           className={
                             hasLiked
                               ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
@@ -734,7 +1039,7 @@ export default function ViewerPage() {
                           }
                         >
                           <Heart className={`w-4 h-4 mr-1 ${hasLiked ? "fill-current" : ""}`} />
-                          {likes}
+                          {isLiking ? (hasLiked ? "Unliking..." : "Liking...") : likes}
                         </Button>
                         <Button
                           variant="outline"
@@ -795,6 +1100,22 @@ export default function ViewerPage() {
                             src={stream.thumbnail || "/placeholder.svg"}
                             alt={stream.title}
                             className="w-20 h-14 object-cover rounded"
+                            onLoad={(e) => {
+                              console.log("Sidebar thumbnail loaded successfully:", e.currentTarget.src)
+                            }}
+                            onError={(e) => {
+                              console.error("Sidebar thumbnail failed to load:", e.currentTarget.src)
+                              // Try the full URL first
+                              const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.roomId}.jpg`
+                              if (e.currentTarget.src !== fullUrl) {
+                                console.log("Trying full sidebar URL:", fullUrl)
+                                e.currentTarget.src = fullUrl
+                              } else {
+                                // If full URL also fails, use placeholder
+                                console.log("Full sidebar URL also failed, using placeholder")
+                                e.currentTarget.src = "/placeholder.svg?height=56&width=80"
+                              }
+                            }}
                           />
                           <div className="absolute top-1 left-1">
                             <Badge variant="destructive" className="text-xs px-1 py-0">
@@ -830,7 +1151,7 @@ export default function ViewerPage() {
                 <CardTitle className="text-lg">Live Chat</CardTitle>
               </CardHeader>
               <CardContent className="p-0 h-[calc(100%-70px)]">
-                <LiveChat />
+                <LiveChat roomId={roomId} currentUserDisplayName={currentUserDisplayName} enableChat={isChatEnabled} />
               </CardContent>
             </Card>
           </div>
@@ -841,7 +1162,7 @@ export default function ViewerPage() {
         open={showShareModal}
         onOpenChange={setShowShareModal}
         streamUrl={getStreamUrl()}
-        streamTitle={`Live Stream - Room ${roomId}`}
+        streamTitle={streamDetails?.title || `Live Stream - Room ${roomId}`}
       />
 
       <style jsx>{`

@@ -1,12 +1,11 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
+import { Badge } from "@/components/ui/badge"
 import { Mic, MicOff, Video, VideoOff, Play, Square, Share, Users } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { auth } from "@/lib/firebase"
@@ -14,9 +13,9 @@ import { onAuthStateChanged } from "firebase/auth"
 import { getIdToken } from "firebase/auth"
 import { useRouter } from "next/navigation"
 import { LiveChat } from "@/components/live-chat"
-import { StreamSettingsModal } from "@/components/stream-settings-modal"
 import { ShareModal } from "@/components/share-modal"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { StreamDetailsModal } from "@/components/stream-details-modal" // Import the new modal component
 
 export default function StreamerPage() {
   const [isStreaming, setIsStreaming] = useState(false)
@@ -26,32 +25,24 @@ export default function StreamerPage() {
   const [enableChat, setEnableChat] = useState(true)
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
+  const [tags, setTags] = useState<string[]>([])
+  const [newTag, setNewTag] = useState("")
   const [roomId, setRoomId] = useState<string | null>(null)
   const [user, setUser] = useState<any>(null)
   const [internetStrength, setInternetStrength] = useState(85)
   const [bitrate, setBitrate] = useState(2500)
-  const [roomDescription, setRoomDescription] = useState("My Awesome Stream")
   const [createdRoomId, setCreatedRoomId] = useState<string | null>(null)
   const [logs, setLogs] = useState<string[]>([])
   const [firebaseUid, setFirebaseUid] = useState<string | null>(null)
-  const [isRecording, setIsRecording] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [streamSettings, setStreamSettings] = useState<{
-    title: string
-    description: string
-    tags: string[]
-    enableChat: boolean
-  } | null>(null)
-  const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
-  const [showDescription, setShowDescription] = useState(false)
   const [likes, setLikes] = useState(156)
   const [hasLiked, setHasLiked] = useState(false)
   const [streamDuration, setStreamDuration] = useState("00:00:00")
   const [isLoading, setIsLoading] = useState(false)
   const [isLive, setIsLive] = useState(isStreaming)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [isUpdating, setIsUpdating] = useState(false)
+  const [showStreamDetailsModal, setShowStreamDetailsModal] = useState(true) // Changed to true to open on load
+  const [currentUserDisplayName, setCurrentUserDisplayName] = useState("Streamer") // For chat
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const logsRef = useRef<HTMLDivElement>(null)
@@ -90,12 +81,13 @@ export default function StreamerPage() {
     return headers
   }
 
-  // Firebase authentication check
+  // Firebase authentication check and set current user display name
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
         setUser(currentUser)
         setFirebaseUid(currentUser.uid)
+        setCurrentUserDisplayName(currentUser.displayName || currentUser.email?.split("@")[0] || "Streamer")
         log("Firebase authenticated. UID: " + currentUser.uid)
       } else {
         log("Not authenticated with Firebase. Redirecting to login...")
@@ -105,31 +97,44 @@ export default function StreamerPage() {
     return () => unsubscribe()
   }, [router])
 
-  // Add this useEffect after the Firebase auth useEffect:
-  useEffect(() => {
-    if (firebaseUid) {
-      testServerConnection()
+  const testServerConnection = async () => {
+    log("Testing server connection...")
+    try {
+      const headers = await getAuthHeaders()
+
+      // Test Flask handler connection with proper payload structure
+      log(`Testing connection to: ${FLASK_SERVER_URL}`)
+      const handlerResponse = await fetch(FLASK_SERVER_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            test: true,
+            UID: firebaseUid || "test_uid",
+            username: "test_user",
+          },
+        }),
+      })
+      log(`Handler server response status: ${handlerResponse.status}`)
+      log(`Handler server content-type: ${handlerResponse.headers.get("content-type")}`)
+
+      if (handlerResponse.ok) {
+        const data = await handlerResponse.json()
+        log(`Server connection test successful: ${JSON.stringify(data)}`)
+        return true
+      } else {
+        log(`Server connection test failed: ${handlerResponse.status} ${handlerResponse.statusText}`)
+        return false
+      }
+    } catch (error: any) {
+      log(`Server connection test failed: ${error.message}`)
+      return false
     }
-  }, [firebaseUid])
+  }
 
   useEffect(() => {
     if (firebaseUid) {
-      // Check if stream settings exist
-      const savedSettings = localStorage.getItem("streamSettings")
-      if (savedSettings) {
-        try {
-          const settings = JSON.parse(savedSettings)
-          setStreamSettings(settings)
-          setTitle(settings.title)
-          setDescription(settings.description)
-          setEnableChat(settings.enableChat)
-          log(`Stream settings loaded: ${settings.title}`)
-        } catch (error) {
-          log("Error parsing stream settings")
-          // Don't auto-show modal, let user click start streaming
-        }
-      }
-      // Don't auto-show modal, let user click start streaming
+      testServerConnection()
     }
   }, [firebaseUid])
 
@@ -165,18 +170,59 @@ export default function StreamerPage() {
     }
   }, [isStreaming])
 
-  // Simulate real-time updates
+  // Fetch view count periodically when streaming
+  const fetchViewCount = async () => {
+    if (!createdRoomId) return
+
+    try {
+      const headers = await getAuthHeaders()
+
+      const response = await fetch("https://superfan.alterwork.in/api/get_views", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            room_id: createdRoomId,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Streamer view count data:", data) // Debug log
+
+        // Update the viewers count with real data from API
+        if (data.views !== undefined) {
+          setViewers(data.views)
+        }
+      } else {
+        console.error("Failed to fetch view count:", response.status, response.statusText)
+      }
+    } catch (error) {
+      console.error("Error fetching view count:", error)
+    }
+  }
+
+  useEffect(() => {
+    if (isStreaming && createdRoomId) {
+      // Fetch immediately
+      fetchViewCount()
+
+      // Then fetch every 10 seconds
+      const interval = setInterval(fetchViewCount, 10000)
+      return () => clearInterval(interval)
+    }
+  }, [isStreaming, createdRoomId])
+
+  // Simulate other real-time updates (but not viewers - that comes from API now)
   useEffect(() => {
     const interval = setInterval(() => {
-      if (isStreaming) {
-        setViewers((prev) => Math.max(0, prev + Math.floor(Math.random() * 10) - 5))
-      }
       setInternetStrength((prev) => Math.max(60, Math.min(100, prev + Math.floor(Math.random() * 10) - 5)))
       setBitrate((prev) => Math.max(1000, Math.min(5000, prev + Math.floor(Math.random() * 200) - 100)))
     }, 3000)
 
     return () => clearInterval(interval)
-  }, [isStreaming])
+  }, [])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -194,15 +240,40 @@ export default function StreamerPage() {
     setLogs((prev) => [...prev, logMessage])
   }
 
+  const handleAddTag = () => {
+    if (newTag.trim() && !tags.includes(newTag.trim()) && tags.length < 5) {
+      setTags([...tags, newTag.trim()])
+      setNewTag("")
+    }
+  }
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setTags(tags.filter((tag) => tag !== tagToRemove))
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      handleAddTag()
+    }
+  }
+
   const sendToProxy = async (path: string, payload: any, method = "POST") => {
-    log(`Sending to proxy (${method}): ${path} with payload: ${JSON.stringify(payload)}`)
+    // Ensure we always have a payload, even if it's empty
+    const requestPayload = payload || {}
+
+    log(`Sending to proxy (${method}): ${path} with payload: ${JSON.stringify(requestPayload)}`)
     try {
       const headers = await getAuthHeaders()
 
       const response = await fetch(FLASK_PROXY_URL, {
         method: "POST",
         headers,
-        body: JSON.stringify({ path: path, payload: payload, method: method }),
+        body: JSON.stringify({
+          path: path,
+          payload: requestPayload,
+          method: method,
+        }),
       })
 
       // Check if response is HTML instead of JSON
@@ -232,11 +303,16 @@ export default function StreamerPage() {
   }
 
   const sendToHandler = async (payload: any) => {
+    // Validate that we have a proper payload
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid payload: payload must be a valid object")
+    }
+
     log(`Sending to create_stream endpoint with payload: ${JSON.stringify(payload)}`)
     try {
       const headers = await getAuthHeaders()
 
-      // Ensure the payload is properly wrapped
+      // Ensure the payload is properly wrapped and validated
       const requestBody = {
         payload: payload,
       }
@@ -279,35 +355,6 @@ export default function StreamerPage() {
     }
   }
 
-  const testServerConnection = async () => {
-    log("Testing server connection...")
-    try {
-      const headers = await getAuthHeaders()
-
-      // Test Flask proxy connection
-      log(`Testing connection to: ${FLASK_PROXY_URL}`)
-      const proxyResponse = await fetch(FLASK_PROXY_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ test: true }),
-      })
-      log(`Proxy server response status: ${proxyResponse.status}`)
-      log(`Proxy server content-type: ${proxyResponse.headers.get("content-type")}`)
-
-      // Test Flask handler connection with proper payload structure
-      log(`Testing connection to: ${FLASK_SERVER_URL}`)
-      const handlerResponse = await fetch(FLASK_SERVER_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ payload: { test: true } }),
-      })
-      log(`Handler server response status: ${handlerResponse.status}`)
-      log(`Handler server content-type: ${handlerResponse.headers.get("content-type")}`)
-    } catch (error: any) {
-      log(`Server connection test failed: ${error.message}`)
-    }
-  }
-
   const startKeepAlive = () => {
     if (keepAliveIntervalRef.current) clearInterval(keepAliveIntervalRef.current)
     keepAliveIntervalRef.current = setInterval(async () => {
@@ -329,7 +376,8 @@ export default function StreamerPage() {
     if (stopSessionPollingRef.current || !janusSessionIdRef.current) return
     log("Streamer: Starting session long-poll GET...")
     try {
-      const response = await sendToProxy(`/${janusSessionIdRef.current}?maxev=1&rid=${Date.now()}`, null, "GET")
+      // For GET requests, we still need to structure the request properly
+      const response = await sendToProxy(`/${janusSessionIdRef.current}?maxev=1&rid=${Date.now()}`, {}, "GET")
       if (response) {
         handleAsyncJanusEvent(response)
       }
@@ -398,13 +446,38 @@ export default function StreamerPage() {
             if (firebaseUid && currentRoomId) {
               log("Calling sendToHandler with create_stream...")
 
+              // Validate all required fields before creating payload
+              const username = getUserDisplayName()
+              if (!username || !currentRoomId || !janusSessionIdRef.current) {
+                log(
+                  `Missing required fields - username: ${username}, roomId: ${currentRoomId}, sessionId: ${janusSessionIdRef.current}`,
+                )
+                return
+              }
+
               // Create the payload that matches your endpoint structure
               const streamPayload = {
                 room_id: currentRoomId,
-                room_description: streamSettings?.title || "Live Stream",
+                room_description: title || "Live Stream",
                 session_id: janusSessionIdRef.current,
                 UID: firebaseUid,
-                username: getUserDisplayName(),
+                username: username,
+                title: title || "Live Stream",
+                description: description || "",
+                chatEnabled: enableChat, // Include chatEnabled
+              }
+
+              // Validate payload before sending - update validation to include new fields
+              if (
+                !streamPayload.room_id ||
+                !streamPayload.UID ||
+                !streamPayload.username ||
+                !streamPayload.session_id ||
+                !streamPayload.title ||
+                streamPayload.chatEnabled === undefined // Validate chatEnabled
+              ) {
+                log(`Invalid payload - missing required fields: ${JSON.stringify(streamPayload)}`)
+                return
               }
 
               sendToHandler(streamPayload)
@@ -587,21 +660,24 @@ export default function StreamerPage() {
     }
   }
 
-  const startStreaming = async () => {
-    // Check if we have stream settings, if not show the modal
-    if (!streamSettings) {
-      setShowSettingsModal(true)
-      return
-    }
+  const handleStartStreamFromModal = async () => {
+    // This function is called when the "Start Stream" button inside the modal is clicked.
+    // It will trigger the actual startStreaming logic and then close the modal.
+    await startStreaming()
+    setShowStreamDetailsModal(false)
+  }
 
-    if (!streamSettings.title.trim()) {
+  const startStreaming = async () => {
+    if (!title.trim()) {
       alert("Please enter a stream title")
       return
     }
+    if (!description.trim()) {
+      alert("Please enter a stream description")
+      return
+    }
 
-    log(`Streamer: Starting stream for room: "${streamSettings.title}"`)
-
-    // Set loading state to true
+    log(`Streamer: Starting stream: "${title}"`)
     setIsLoading(true)
 
     try {
@@ -614,9 +690,8 @@ export default function StreamerPage() {
 
       await createJanusSession()
       await attachVideoRoomPlugin()
-      const newRoomId = await createRoom(streamSettings.title) // Use settings title
+      const newRoomId = await createRoom(title)
 
-      // Verify the room ID was set correctly
       log(`Room creation returned: ${newRoomId}`)
       log(`createdRoomId state is now: ${createdRoomId}`)
 
@@ -625,7 +700,6 @@ export default function StreamerPage() {
       log(`Streamer: Error starting stream: ${error.message}`)
       alert(`Error starting stream: ${error.message}`)
       stopStreamingCleanup()
-      // Set loading state to false on error
       setIsLoading(false)
     }
   }
@@ -724,7 +798,6 @@ export default function StreamerPage() {
       navigator.clipboard.writeText(streamUrl)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-      log(`Stream URL copied: ${streamUrl}`)
     }
   }
 
@@ -793,39 +866,6 @@ export default function StreamerPage() {
     }
   }
 
-  const handleUpdateSettings = async () => {
-    if (!title.trim()) {
-      alert("Please enter a stream title")
-      return
-    }
-
-    setIsUpdating(true)
-
-    try {
-      const updatedSettings = {
-        title: title.trim(),
-        description: description.trim(),
-        tags: streamSettings?.tags || [],
-        enableChat,
-      }
-
-      localStorage.setItem("streamSettings", JSON.stringify(updatedSettings))
-      setStreamSettings(updatedSettings)
-      setRoomDescription(updatedSettings.title) // Update room description
-      setHasUnsavedChanges(false)
-
-      log(`Stream settings updated: ${updatedSettings.title}`)
-
-      // Show success feedback
-      setTimeout(() => {
-        setIsUpdating(false)
-      }, 500)
-    } catch (error) {
-      console.error("Error updating settings:", error)
-      setIsUpdating(false)
-    }
-  }
-
   const getUserDisplayName = () => {
     return user?.displayName || user?.email?.split("@")[0] || "User"
   }
@@ -848,7 +888,7 @@ export default function StreamerPage() {
                   {!isStreaming && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                       <Button
-                        onClick={startStreaming}
+                        onClick={() => setShowStreamDetailsModal(true)} // This button will still open the modal if it's closed
                         disabled={!firebaseUid || isLoading}
                         size="lg"
                         className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
@@ -921,149 +961,110 @@ export default function StreamerPage() {
               </CardContent>
             </Card>
 
-            {/* About Section */}
-            <Card className="">
-              <CardHeader>
-                <CardTitle>About</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="title">Title</Label>
-                  <Input
-                    id="title"
-                    value={title}
-                    onChange={(e) => {
-                      setTitle(e.target.value)
-                      // Enable update button when title changes from saved settings
-                      if (streamSettings && e.target.value !== streamSettings.title) {
-                        setHasUnsavedChanges(true)
-                      } else if (
-                        streamSettings &&
-                        e.target.value === streamSettings.title &&
-                        description === streamSettings.description
-                      ) {
-                        setHasUnsavedChanges(false)
-                      }
-                    }}
-                    placeholder="Enter stream title"
-                    disabled={isStreaming}
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={description}
-                    onChange={(e) => {
-                      setDescription(e.target.value)
-                      // Enable update button when description changes from saved settings
-                      if (streamSettings && e.target.value !== streamSettings.description) {
-                        setHasUnsavedChanges(true)
-                      } else if (
-                        streamSettings &&
-                        e.target.value === streamSettings.description &&
-                        title === streamSettings.title
-                      ) {
-                        setHasUnsavedChanges(false)
-                      }
-                    }}
-                    placeholder="Describe your stream"
-                    disabled={isStreaming}
-                    rows={3}
-                  />
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch id="chat" checked={enableChat} onCheckedChange={setEnableChat} disabled={isStreaming} />
-                  <Label htmlFor="chat">Enable Chat</Label>
-                </div>
-                <div className="flex gap-2">
-                  {/* Update Button - only show when not streaming */}
-                  {!isStreaming && (
-                    <Button
-                      onClick={handleUpdateSettings}
-                      disabled={!hasUnsavedChanges || isUpdating}
-                      variant="outline"
-                      className="hover:bg-orange-50 dark:hover:bg-orange-950"
-                    >
-                      {isUpdating ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-orange-600 border-t-transparent rounded-full animate-spin mr-2" />
-                          Updating...
-                        </>
-                      ) : (
-                        "Update"
+            {/* Stream Info - Only show when streaming */}
+            {isStreaming && (
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h1 className="text-xl font-bold mb-3">{title}</h1>
+                      {description && <p className="text-muted-foreground mb-4">{description}</p>}
+                      {tags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {tags.map((tag) => (
+                            <Badge key={tag} variant="outline">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
                       )}
-                    </Button>
-                  )}
-
-                  {isStreaming ? (
-                    <>
+                      <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
+                        <span className="flex items-center gap-1">
+                          <Users className="w-4 h-4" />
+                          {formatNumber(viewers)} watching
+                        </span>
+                        <span>Duration: {streamDuration}</span>
+                        <Badge variant="destructive" className="animate-pulse">
+                          <div className="w-2 h-2 bg-white rounded-full mr-1"></div>
+                          LIVE
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src="/placeholder.svg" alt="Channel" />
+                          <AvatarFallback>@</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="font-medium">@{getUserDisplayName()}</div>
+                          <div className="text-sm text-muted-foreground">Broadcasting live</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
                       <Button onClick={stopStreamingCleanup} variant="destructive">
                         <Square className="h-4 w-4 mr-2" />
                         Stop Stream
                       </Button>
-                      <Button onClick={shareStream} variant="outline">
+                      <Button
+                        onClick={() => setShowShareModal(true)}
+                        variant="outline"
+                        className="hover:bg-orange-50 dark:hover:bg-orange-950"
+                      >
                         <Share className="h-4 w-4 mr-2" />
                         Share
                       </Button>
-                    </>
-                  ) : null}
-                </div>
-              </CardContent>
-            </Card>
-            {/* Update the channel info section to only show username */}
-            <div className="flex items-start gap-4 mt-4 pb-4 border-b border-orange-200 dark:border-orange-800">
-              <Avatar className="h-12 w-12">
-                <AvatarImage src="/placeholder.svg" alt="Channel" />
-                <AvatarFallback>@</AvatarFallback>
-              </Avatar>
-
-              <div className="flex-1">
-                <h3 className="font-medium">@{getUserDisplayName()}</h3>
-                <p className="text-sm text-muted-foreground">2.4K subscribers</p>
-              </div>
-            </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Chat Section */}
           <div>
             <Card className="h-[600px]">
               <CardHeader>
-                <CardTitle>Chat ({viewers} viewers)</CardTitle>
+                <CardTitle className="text-lg">Live Chat</CardTitle>
               </CardHeader>
               <CardContent className="p-0 h-[calc(100%-70px)]">
-                {enableChat ? <LiveChat /> : <div className="p-4 text-center text-muted-foreground">Chat disabled</div>}
+                <LiveChat
+                  roomId={createdRoomId}
+                  currentUserDisplayName={currentUserDisplayName}
+                  enableChat={enableChat}
+                />
               </CardContent>
             </Card>
           </div>
         </div>
       </div>
 
-      <StreamSettingsModal
-        open={showSettingsModal}
-        onOpenChange={setShowSettingsModal}
-        onSave={() => {
-          // Reload settings and then start streaming
-          const savedSettings = localStorage.getItem("streamSettings")
-          if (savedSettings) {
-            const settings = JSON.parse(savedSettings)
-            setStreamSettings(settings)
-            setTitle(settings.title)
-            setDescription(settings.description)
-            setEnableChat(settings.enableChat)
-
-            // Start streaming after settings are saved
-            setTimeout(() => {
-              startStreaming()
-            }, 100)
-          }
-        }}
-      />
       <ShareModal
         open={showShareModal}
         onOpenChange={setShowShareModal}
         streamUrl={getStreamUrl()}
-        streamTitle={streamSettings?.title || "My Awesome Stream"}
+        streamTitle={title || "My Live Stream"}
+      />
+
+      {/* Stream Details Modal */}
+      <StreamDetailsModal
+        open={showStreamDetailsModal}
+        onOpenChange={setShowStreamDetailsModal}
+        title={title}
+        setTitle={setTitle}
+        description={description}
+        setDescription={setDescription}
+        tags={tags}
+        setTags={setTags}
+        newTag={newTag}
+        setNewTag={setNewTag}
+        handleAddTag={handleAddTag}
+        handleRemoveTag={handleRemoveTag}
+        handleKeyPress={handleKeyPress}
+        enableChat={enableChat}
+        setEnableChat={setEnableChat}
+        onStartStream={handleStartStreamFromModal}
+        isLoading={isLoading}
+        firebaseUid={firebaseUid}
       />
     </div>
   )

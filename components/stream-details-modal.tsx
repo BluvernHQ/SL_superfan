@@ -1,118 +1,94 @@
 "use client"
 
 import type React from "react"
-
-import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
+import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { X, Plus } from "lucide-react"
+import { Plus, X } from "lucide-react"
 
-interface StreamSettingsModalProps {
+interface StreamDetailsModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSave?: () => void
+  title: string
+  setTitle: (title: string) => void
+  description: string
+  setDescription: (description: string) => void
+  tags: string[]
+  setTags: (tags: string[]) => void
+  newTag: string
+  setNewTag: (tag: string) => void
+  handleAddTag: () => void
+  handleRemoveTag: (tag: string) => void
+  handleKeyPress: (e: React.KeyboardEvent) => void
+  enableChat: boolean
+  setEnableChat: (enabled: boolean) => void
+  onStartStream: () => void
+  isLoading: boolean
+  firebaseUid: string | null
 }
 
-export function StreamSettingsModal({ open, onOpenChange, onSave }: StreamSettingsModalProps) {
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
-  const [tags, setTags] = useState<string[]>([])
-  const [newTag, setNewTag] = useState("")
-  const [enableChat, setEnableChat] = useState(true)
-
-  // Load saved settings on mount
-  useEffect(() => {
-    const savedSettings = localStorage.getItem("streamSettings")
-    if (savedSettings) {
-      try {
-        const settings = JSON.parse(savedSettings)
-        setTitle(settings.title || "")
-        setDescription(settings.description || "")
-        setTags(settings.tags || [])
-        setEnableChat(settings.enableChat ?? true)
-      } catch (error) {
-        console.error("Error loading stream settings:", error)
-      }
-    }
-  }, [open])
-
-  const handleAddTag = () => {
-    if (newTag.trim() && !tags.includes(newTag.trim()) && tags.length < 5) {
-      setTags([...tags, newTag.trim()])
-      setNewTag("")
-    }
-  }
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    setTags(tags.filter((tag) => tag !== tagToRemove))
-  }
-
-  const handleSave = () => {
-    if (!title.trim()) {
-      alert("Please enter a stream title")
-      return
-    }
-
-    const settings = {
-      title: title.trim(),
-      description: description.trim(),
-      tags,
-      enableChat,
-    }
-
-    localStorage.setItem("streamSettings", JSON.stringify(settings))
-    onOpenChange(false)
-
-    // Call the onSave callback if provided
-    if (onSave) {
-      onSave()
-    }
-
-    // Reload the page to apply new settings
-    window.location.reload()
-  }
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      handleAddTag()
-    }
-  }
-
+export function StreamDetailsModal({
+  open,
+  onOpenChange,
+  title,
+  setTitle,
+  description,
+  setDescription,
+  tags,
+  setTags,
+  newTag,
+  setNewTag,
+  handleAddTag,
+  handleRemoveTag,
+  handleKeyPress,
+  enableChat,
+  setEnableChat,
+  onStartStream,
+  isLoading,
+  firebaseUid,
+}: StreamDetailsModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="sm:max-w-[500px]"
-        onPointerDownOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()}
-        hideCloseButton={true}
-      >
+      <DialogContent className="sm:max-w-[425px]" hideCloseButton={true}>
         <DialogHeader>
-          <DialogTitle>Stream Settings</DialogTitle>
+          <DialogTitle>Stream Details</DialogTitle>
+          <DialogDescription>
+            Fill in the details for your live stream. This information will be visible to your viewers.
+          </DialogDescription>
         </DialogHeader>
-
-        <div className="space-y-6">
+        <div className="grid gap-4 py-4">
           {/* Title */}
           <div className="space-y-2">
-            <Label htmlFor="stream-title">Stream Title *</Label>
+            <Label htmlFor="stream-title">
+              Stream Title <span className="text-red-500">*</span>
+            </Label>
             <Input
               id="stream-title"
               placeholder="Enter your stream title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               maxLength={100}
+              required // Make title required
             />
             <p className="text-xs text-muted-foreground">{title.length}/100 characters</p>
           </div>
 
           {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="stream-description">Description</Label>
+            <Label htmlFor="stream-description">
+              Description <span className="text-red-500">*</span>
+            </Label>
             <Textarea
               id="stream-description"
               placeholder="Describe what you'll be streaming..."
@@ -120,6 +96,7 @@ export function StreamSettingsModal({ open, onOpenChange, onSave }: StreamSettin
               onChange={(e) => setDescription(e.target.value)}
               maxLength={500}
               rows={3}
+              required // Make description required
             />
             <p className="text-xs text-muted-foreground">{description.length}/500 characters</p>
           </div>
@@ -171,17 +148,23 @@ export function StreamSettingsModal({ open, onOpenChange, onSave }: StreamSettin
             </div>
             <Switch id="enable-chat" checked={enableChat} onCheckedChange={setEnableChat} />
           </div>
-
-          {/* Action Buttons */}
-          <div className="flex justify-end pt-4">
-            <Button
-              onClick={handleSave}
-              className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-            >
-              Save Settings
-            </Button>
-          </div>
         </div>
+        <DialogFooter>
+          <Button
+            onClick={onStartStream}
+            disabled={!firebaseUid || isLoading || !title.trim() || !description.trim()} // Updated disabled condition
+            className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+          >
+            {isLoading ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                Starting Stream...
+              </>
+            ) : (
+              "Start Stream"
+            )}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
