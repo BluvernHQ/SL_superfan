@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Eye, EyeOff, Play, Users, Mail, Lock, User, AlertCircle, Check, X } from "lucide-react"
+import { Eye, EyeOff, Play, Mail, Lock, User, AlertCircle, Check, X } from "lucide-react"
 import Link from "next/link"
 import { auth } from "@/lib/firebase"
 import {
@@ -680,23 +680,6 @@ export default function LoginPage() {
             </TabsContent>
           </Tabs>
         </Card>
-
-        {/* Footer Stats */}
-        <div className="mt-8 text-center">
-          <div className="flex items-center justify-center space-x-8 text-sm text-muted-foreground">
-            <div className="flex items-center">
-              <Users className="w-4 h-4 mr-2 text-orange-500" />
-              <span>10K+ Streamers</span>
-            </div>
-            <div className="flex items-center">
-              <Eye className="w-4 h-4 mr-2 text-orange-500" />
-              <span>500K+ Viewers</span>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-4">
-            Join thousands of creators sharing their passion worldwide
-          </p>
-        </div>
       </div>
     </div>
   )

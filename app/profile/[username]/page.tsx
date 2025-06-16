@@ -10,6 +10,7 @@ import { Navigation } from "@/components/navigation"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, getIdToken } from "firebase/auth"
 import { useRouter } from "next/navigation"
+import { VideoPlayerModal } from "@/components/video-player-modal" // Import the new modal
 
 export default function ProfilePage({ params }: { params: { username: string } }) {
   const [isFollowing, setIsFollowing] = useState(false)
@@ -19,6 +20,11 @@ export default function ProfilePage({ params }: { params: { username: string } }
   const [pastRecordings, setPastRecordings] = useState<any[]>([])
   const [isLoadingRecordings, setIsLoadingRecordings] = useState(true)
   const router = useRouter()
+
+  // State for video player modal
+  const [showVideoModal, setShowVideoModal] = useState(false)
+  const [currentVideoUrl, setCurrentVideoUrl] = useState("")
+  const [currentVideoTitle, setCurrentVideoTitle] = useState("")
 
   // Mock profile data (will be partially replaced by API calls)
   const profileUser = {
@@ -77,8 +83,8 @@ export default function ProfilePage({ params }: { params: { username: string } }
         const data = await response.json()
         console.log("Raw past recordings data from /get_rec:", data) // Debug log
 
-        if (Array.isArray(data)) {
-          const transformedRecordings = data.map((rec: any) => ({
+        if (Array.isArray(data.user)) {
+          const transformedRecordings = data.user.map((rec: any) => ({
             id: rec.roomId, // Use roomId as unique ID
             title: rec.room_description || `Recording from ${rec.start ? rec.start.split("T")[0] : "Unknown Date"}`, // Use room_description if available, fallback to formatted date
             views: rec.views || 0,
@@ -115,6 +121,12 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
   const handleUnblacklistUser = (username: string) => {
     setBlacklistedUsers((prev) => prev.filter((u) => u !== username))
+  }
+
+  const handlePlayRecording = (recording: any) => {
+    setCurrentVideoUrl(`https://superfan.alterwork.in/files/videos/${recording.id}.webm`)
+    setCurrentVideoTitle(recording.title)
+    setShowVideoModal(true)
   }
 
   const formatNumber = (num: number) => {
@@ -257,7 +269,11 @@ export default function ProfilePage({ params }: { params: { username: string } }
                 {pastRecordings.map((recording) => {
                   console.log("Attempting to render recording:", recording.id, recording.title) // Debug log inside map
                   return (
-                    <Card key={recording.id} className="cursor-pointer hover:shadow-lg transition-shadow max-w-sm">
+                    <Card
+                      key={recording.id}
+                      className="cursor-pointer hover:shadow-lg transition-shadow max-w-sm"
+                      onClick={() => handlePlayRecording(recording)} // Add onClick handler
+                    >
                       <CardContent className="p-4">
                         <div className="w-full h-40 bg-black rounded mb-3 flex items-center justify-center overflow-hidden">
                           <img
@@ -313,6 +329,14 @@ export default function ProfilePage({ params }: { params: { username: string } }
           </Card>
         )}
       </div>
+
+      {/* Video Player Modal */}
+      <VideoPlayerModal
+        open={showVideoModal}
+        onOpenChange={setShowVideoModal}
+        videoUrl={currentVideoUrl}
+        videoTitle={currentVideoTitle}
+      />
     </div>
   )
 }
