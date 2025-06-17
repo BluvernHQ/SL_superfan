@@ -20,6 +20,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
   const [pastRecordings, setPastRecordings] = useState<any[]>([])
   const [isLoadingRecordings, setIsLoadingRecordings] = useState(true)
   const router = useRouter()
+  const [isFollowingAction, setIsFollowingAction] = useState(false)
 
   // State for video player modal
   const [showVideoModal, setShowVideoModal] = useState(false)
@@ -38,8 +39,8 @@ export default function ProfilePage({ params }: { params: { username: string } }
   // Helper function to get auth headers
   const getAuthHeaders = async () => {
     const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Accept: "application/json",
+      "Content-Type": "application/json",\
+      Accept": "application/json",
     }
 
     if (auth.currentUser) {
@@ -86,8 +87,8 @@ export default function ProfilePage({ params }: { params: { username: string } }
         if (Array.isArray(data.user)) {
           const transformedRecordings = data.user.map((rec: any) => ({
             id: rec.roomId, // Use roomId as unique ID
-            title: rec.room_description || `Recording from ${rec.start ? rec.start.split("T")[0] : "Unknown Date"}`, // Use room_description if available, fallback to formatted date
-            views: rec.views || 0,
+            title: rec.description || `Recording from ${rec.start ? rec.start.split("T")[0] : "Unknown Date"}`, // Use room_description if available, fallback to formatted date
+            views: rec.maxviews || 0,
             date: formatDate(rec.start), // Format start time as date
             thumbnail: `https://superfan.alterwork.in/files/thumbnails/${rec.roomId}.jpg`,
           }))
@@ -151,6 +152,118 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
   }
 
+  const handleFollow = async () => {
+    if (!currentUser) {
+      router.push("/login?redirect=/profile/" + params.username)
+      return
+    }
+    if (isFollowing || isFollowingAction || isOwnProfile) {
+      return
+    }
+    setIsFollowingAction(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/create_follower", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            follow: params.username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        setIsFollowing(true)
+        // Optionally, update followers count if API returns it
+        console.log(`Successfully followed ${params.username}.`)
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        console.error(`Failed to follow: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to follow user: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      console.error(`Error following user: ${error.message}`)
+      alert(`Error following user: ${error.message}`)
+    } finally {
+      setIsFollowingAction(false)
+    }
+  }
+
+  const handleUnfollow = async () => {
+    if (!currentUser) {
+      router.push("/login?redirect=/profile/" + params.username)
+      return
+    }
+    if (!isFollowing || isFollowingAction || isOwnProfile) {
+      return
+    }
+    setIsFollowingAction(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/un_follow", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            unfollow: params.username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        setIsFollowing(false)
+        // Optionally, update followers count if API returns it
+        console.log(`Successfully unfollowed ${params.username}.`)
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        console.error(`Failed to unfollow: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to unfollow user: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      console.error(`Error unfollowing user: ${error.message}`)
+      alert(`Error unfollowing user: ${error.message}`)
+    } finally {
+      setIsFollowingAction(false)
+    }
+  }
+
+  const checkIfFollowing = async () => {
+    if (!currentUser || isOwnProfile) {
+      setIsFollowing(false)
+      return
+    }
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/did_follow", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            did_follow: params.username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setIsFollowing(data.followed)
+      } else {
+        console.error("Failed to check follow status:", response.status, response.statusText)
+        setIsFollowing(false)
+      }
+    } catch (error) {
+      console.error("Error checking follow status:", error)
+      setIsFollowing(false)
+    }
+  }
+
+  useEffect(() => {
+    if (params.username && currentUser) {
+      checkIfFollowing()
+    }
+  }, [params.username, currentUser, isOwnProfile])
+
   console.log("ProfilePage rendering. isLoadingRecordings:", isLoadingRecordings)
   console.log("ProfilePage rendering. pastRecordings.length:", pastRecordings.length)
 
@@ -166,7 +279,13 @@ export default function ProfilePage({ params }: { params: { username: string } }
             <CardContent className="p-6">
               <div className="flex items-center gap-6">
                 <Avatar className="w-24 h-24">
-                  <AvatarImage src="/placeholder.svg" alt={profileUser.username} />
+                  <AvatarImage
+                    src={`https://superfan.alterwork.in/files/profilepic/${profileUser.username}.png`}
+                    alt={profileUser.username}
+                    onError={(e) => {
+                      e.currentTarget.src = "/placeholder.svg?height=96&width=96"
+                    }}
+                  />
                   <AvatarFallback className="text-2xl">{profileUser.username.charAt(0).toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <div className="flex-1">
@@ -189,10 +308,17 @@ export default function ProfilePage({ params }: { params: { username: string } }
                     <>
                       <Button
                         variant={isFollowing ? "secondary" : "default"}
-                        onClick={() => setIsFollowing(!isFollowing)}
+                        onClick={isFollowing ? handleUnfollow : handleFollow}
+                        disabled={isFollowingAction || !currentUser || isOwnProfile}
                         className={!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""}
                       >
-                        {isFollowing ? "Following" : "Follow"}
+                        {isFollowingAction
+                          ? isFollowing
+                            ? "Unfollowing..."
+                            : "Following..."
+                          : isFollowing
+                            ? "Following"
+                            : "Follow"}
                       </Button>
                       <Button
                         variant="outline"

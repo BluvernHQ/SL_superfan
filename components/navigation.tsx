@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Play, User, LogOut, Home, Tv, ChevronDown } from "lucide-react"
+import { Play, User, LogOut, Home, Tv, ChevronDown, Camera } from "lucide-react" // Import Camera icon
 import Link from "next/link"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, signOut } from "firebase/auth"
@@ -66,8 +66,16 @@ export function Navigation() {
     router.push(path)
   }
 
+  const handleStartLive = () => {
+    if (user) {
+      router.push("/streamer")
+    } else {
+      router.push("/login?redirect=stream")
+    }
+  }
+
   return (
-    <nav className="border-b bg-background/95 backdrop-blur">
+    <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -80,7 +88,7 @@ export function Navigation() {
             </span>
           </Link>
 
-          {/* Navigation Links */}
+          {/* Navigation Links (can be expanded later) */}
           <div className="hidden md:flex items-center space-x-6">
             <Link href="/" className="flex items-center space-x-1 text-sm font-medium hover:text-primary">
               <Home className="w-4 h-4" />
@@ -88,8 +96,17 @@ export function Navigation() {
             </Link>
           </div>
 
-          {/* User Menu */}
+          {/* User Menu and Start Stream Button */}
           <div className="flex items-center space-x-4">
+            <Button
+              size="sm"
+              onClick={handleStartLive}
+              className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+            >
+              <Camera className="mr-2 h-4 w-4" />
+              Start Stream
+            </Button>
+
             {user ? (
               <div className="relative user-dropdown">
                 <Button
@@ -98,7 +115,13 @@ export function Navigation() {
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 >
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={user.photoURL || "/placeholder.svg"} alt="User" />
+                    <AvatarImage
+                      src={`https://superfan.alterwork.in/files/profilepic/${getUserDisplayName()}.png`}
+                      alt="User"
+                      onError={(e) => {
+                        e.currentTarget.src = "/placeholder.svg?height=32&width=32"
+                      }}
+                    />
                     <AvatarFallback>{getUserInitials()}</AvatarFallback>
                   </Avatar>
                   <ChevronDown className={`h-4 w-4 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`} />

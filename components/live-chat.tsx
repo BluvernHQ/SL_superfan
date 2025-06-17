@@ -168,7 +168,13 @@ export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveCha
           {messages.map((msg) => (
             <div key={msg.id} className="flex gap-3">
               <Avatar className="h-8 w-8 flex-shrink-0">
-                <AvatarImage src={msg.avatar || "/placeholder.svg"} alt={msg.username} />
+                <AvatarImage
+                  src={`https://superfan.alterwork.in/files/profilepic/${msg.username}.png`}
+                  alt={msg.username}
+                  onError={(e) => {
+                    e.currentTarget.src = "/placeholder.svg?height=32&width=32"
+                  }}
+                />
                 <AvatarFallback>{msg.username.charAt(0)}</AvatarFallback>
               </Avatar>
 
@@ -213,8 +219,11 @@ export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveCha
         <form onSubmit={handleSendMessage} className="flex gap-2">
           <Avatar className="h-8 w-8 flex-shrink-0">
             <AvatarImage
-              src={`/placeholder.svg?height=32&width=32&query=avatar-${currentUserDisplayName.charAt(0)}`}
+              src={`https://superfan.alterwork.in/files/profilepic/${currentUserDisplayName}.png`}
               alt={currentUserDisplayName}
+              onError={(e) => {
+                e.currentTarget.src = "/placeholder.svg?height=32&width=32"
+              }}
             />
             <AvatarFallback>{currentUserDisplayName.charAt(0)}</AvatarFallback>
           </Avatar>

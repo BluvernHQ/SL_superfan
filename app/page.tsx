@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Play, Users } from "lucide-react"
+import { Users } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
@@ -98,7 +98,7 @@ export default function HomePage() {
 
         // Transform the API response to match our component structure
         const transformedUsers = usersArray.map((userData: any, index: number) => ({
-          id: index + 1,
+          id: userData.UID || index + 1, // Use UID as ID if available
           username: userData.display_name || userData.username || `User${index + 1}`,
           isLive: userData.status !== "notlive",
           totalSessions: userData.sessions || 0,
@@ -147,14 +147,6 @@ export default function HomePage() {
     return () => clearInterval(interval)
   }, [user])
 
-  const handleStartLive = () => {
-    if (user) {
-      router.push("/streamer")
-    } else {
-      router.push("/login?redirect=stream")
-    }
-  }
-
   const formatNumber = (num: number) => {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + "M"
     if (num >= 1000) return (num / 1000).toFixed(1) + "K"
@@ -166,139 +158,148 @@ export default function HomePage() {
       <Navigation />
 
       <main className="container mx-auto px-4 py-8">
-        {/* Start Live Section */}
-        <section className="text-center py-8 mb-8">
-          <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-orange-600 to-orange-400 bg-clip-text text-transparent">
-            Stream Your Passion
-          </h1>
-          <Button
-            size="lg"
-            onClick={handleStartLive}
-            className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-          >
-            <Play className="mr-2 h-5 w-5" />
-            Start Live Stream
-          </Button>
-        </section>
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+          {/* Left Sidebar - All Users */}
+          <aside className="lg:sticky lg:top-20 lg:h-[calc(100vh-80px)] lg:overflow-y-auto pr-4 bg-[var(--sidebar-background)] border-r border-border">
+            <h2 className="text-2xl font-bold mb-4 px-4">All Users</h2> {/* Added px-4 for consistent padding */}
+            <div className="space-y-4 px-4">
+              {" "}
+              {/* Added px-4 for consistent padding */}
+              {allUsers.length > 0 ? (
+                allUsers.map((user) => (
+                  <Card
+                    key={user.id}
+                    // Make the entire card clickable to navigate to the profile
+                    onClick={() => router.push(`/profile/${user.username}`)}
+                    className="cursor-pointer hover:shadow-lg transition-shadow"
+                  >
+                    {/* Reduce padding from p-4 to p-3 for a more compact card */}
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        {" "}
+                        {/* Adjusted gap-3 to gap-2 */}
+                        <div className="relative">
+                          <Avatar className="h-10 w-10">
+                            {" "}
+                            {/* Reduced avatar size from h-12 w-12 to h-10 w-10 */}
+                            <AvatarImage
+                              src={`https://superfan.alterwork.in/files/profilepic/${user.username}.png`}
+                              alt={user.username}
+                              onError={(e) => {
+                                e.currentTarget.src = "/placeholder.svg?height=40&width=40"
+                              }}
+                            />
+                            <AvatarFallback>{user.username.charAt(0)}</AvatarFallback>
+                          </Avatar>
+                          {user.isLive && (
+                            <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full border-1 border-white"></div>
+                          )}
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-base">@{user.username}</h3> {/* Adjusted text size */}
+                        </div>
+                        {user.isLive && (
+                          <Badge variant="destructive" className="text-xs px-2 py-0.5">
+                            {" "}
+                            {/* Adjusted padding for badge */}
+                            <div className="w-1.5 h-1.5 bg-white rounded-full mr-1"></div>
+                            LIVE
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-center text-sm">
+                        {" "}
+                        {/* Adjusted gap-4 to gap-2 and added text-sm */}
+                        <div>
+                          <div className="font-bold text-orange-600">{user.totalSessions}</div>
+                          <div className="text-xs text-muted-foreground">Sessions</div>
+                        </div>
+                        <div>
+                          <div className="font-bold text-orange-600">{formatNumber(user.followers)}</div>
+                          <div className="text-xs text-muted-foreground">Followers</div>
+                        </div>
+                      </div>
+                      {/* Removed the explicit "View Profile" button as the whole card is now clickable */}
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <p className="text-muted-foreground text-center py-8">No users found.</p>
+              )}
+            </div>
+          </aside>
 
-        {/* Current Live Streams */}
-        <section className="mb-8">
-          <h2 className="text-2xl font-bold mb-4">Live Now</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {isLoadingStreams ? (
-              Array.from({ length: 3 }).map((_, index) => (
-                <Card key={index} className="animate-pulse">
-                  <div className="w-full h-48 bg-muted rounded-t-lg"></div>
-                  <CardContent className="p-4">
-                    <div className="h-4 bg-muted rounded mb-2"></div>
-                    <div className="h-3 bg-muted rounded"></div>
-                  </CardContent>
-                </Card>
-              ))
-            ) : liveStreams.length > 0 ? (
-              liveStreams.map((stream) => (
-                <Card key={stream.sessionId} className="cursor-pointer hover:shadow-lg transition-shadow">
-                  <div className="relative">
-                    <img
-                      src={stream.thumbnail || "/placeholder.svg"}
-                      alt={stream.title}
-                      className="w-full h-48 object-cover rounded-t-lg"
-                      onLoad={(e) => {
-                        console.log("Thumbnail loaded successfully:", e.currentTarget.src)
-                      }}
-                      onError={(e) => {
-                        console.error("Thumbnail failed to load:", e.currentTarget.src)
-                        // Try the full URL first
-                        const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.roomId}.jpg`
-                        if (e.currentTarget.src !== fullUrl) {
-                          console.log("Trying full URL:", fullUrl)
-                          e.currentTarget.src = fullUrl
-                        } else {
-                          // If full URL also fails, use placeholder
-                          console.log("Full URL also failed, using placeholder")
-                          e.currentTarget.src = "/placeholder.svg?height=192&width=320"
-                        }
-                      }}
-                    />
-                    <Badge variant="destructive" className="absolute top-2 left-2 text-xs">
-                      <div className="w-1.5 h-1.5 bg-white rounded-full mr-1"></div>
-                      LIVE
-                    </Badge>
-                    <Badge variant="secondary" className="absolute top-2 right-2 text-xs">
-                      <Users className="w-3 h-3 mr-1" />
-                      {stream.viewers}
-                    </Badge>
-                  </div>
-                  <CardContent className="p-4">
-                    <h3 className="font-semibold mb-1">{stream.title}</h3>
-                    <p className="text-sm text-muted-foreground">{stream.streamer}</p>
-                    <Button
-                      size="sm"
-                      className="mt-2 w-full"
-                      onClick={() => window.open(`/viewer?roomId=${stream.roomId}`, "_blank")}
-                    >
-                      Watch Stream
-                    </Button>
-                  </CardContent>
-                </Card>
-              ))
-            ) : (
-              <div className="col-span-full text-center py-8">
-                <p className="text-muted-foreground">No live streams right now</p>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* All Users */}
-        <section>
-          <h2 className="text-2xl font-bold mb-4">All Users</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {allUsers.map((user) => (
-              <Card key={user.id} className="cursor-pointer hover:shadow-lg transition-shadow">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3 mb-3">
+          {/* Main Content Area - Live Streams */}
+          <section className="lg:pl-4">
+            {" "}
+            {/* Added lg:pl-4 to create space for the sticky sidebar */}
+            <h2 className="text-2xl font-bold mb-4">Live Now</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {isLoadingStreams ? (
+                Array.from({ length: 3 }).map((_, index) => (
+                  <Card key={index} className="animate-pulse">
+                    <div className="w-full h-48 bg-muted rounded-t-lg"></div>
+                    <CardContent className="p-4">
+                      <div className="h-4 bg-muted rounded mb-2"></div>
+                      <div className="h-3 bg-muted rounded"></div>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : liveStreams.length > 0 ? (
+                liveStreams.map((stream) => (
+                  <Card key={stream.sessionId} className="cursor-pointer hover:shadow-lg transition-shadow">
                     <div className="relative">
-                      <Avatar className="h-12 w-12">
-                        <AvatarImage src="/placeholder.svg" alt={user.username} />
-                        <AvatarFallback>{user.username.charAt(0)}</AvatarFallback>
-                      </Avatar>
-                      {user.isLive && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white"></div>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold">@{user.username}</h3>
-                    </div>
-                    {user.isLive && (
-                      <Badge variant="destructive" className="text-xs">
+                      <img
+                        src={stream.thumbnail || "/placeholder.svg"}
+                        alt={stream.title}
+                        className="w-full h-48 object-cover rounded-t-lg"
+                        onLoad={(e) => {
+                          console.log("Thumbnail loaded successfully:", e.currentTarget.src)
+                        }}
+                        onError={(e) => {
+                          console.error("Thumbnail failed to load:", e.currentTarget.src)
+                          // Try the full URL first
+                          const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.roomId}.jpg`
+                          if (e.currentTarget.src !== fullUrl) {
+                            console.log("Trying full URL:", fullUrl)
+                            e.currentTarget.src = fullUrl
+                          } else {
+                            // If full URL also fails, use placeholder
+                            console.log("Full URL also failed, using placeholder")
+                            e.currentTarget.src = "/placeholder.svg?height=192&width=320"
+                          }
+                        }}
+                      />
+                      <Badge variant="destructive" className="absolute top-2 left-2 text-xs">
+                        <div className="w-1.5 h-1.5 bg-white rounded-full mr-1"></div>
                         LIVE
                       </Badge>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 text-center">
-                    <div>
-                      <div className="font-bold text-orange-600">{user.totalSessions}</div>
-                      <div className="text-xs text-muted-foreground">Sessions</div>
+                      <Badge variant="secondary" className="absolute top-2 right-2 text-xs">
+                        <Users className="w-3 h-3 mr-1" />
+                        {stream.viewers}
+                      </Badge>
                     </div>
-                    <div>
-                      <div className="font-bold text-orange-600">{formatNumber(user.followers)}</div>
-                      <div className="text-xs text-muted-foreground">Followers</div>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full mt-3"
-                    onClick={() => router.push(`/profile/${user.username}`)}
-                  >
-                    View Profile
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </section>
+                    <CardContent className="p-4">
+                      <h3 className="font-semibold mb-1">{stream.title}</h3>
+                      <p className="text-sm text-muted-foreground">{stream.streamer}</p>
+                      <Button
+                        size="sm"
+                        className="mt-2 w-full"
+                        onClick={() => window.open(`/viewer?roomId=${stream.roomId}`, "_blank")}
+                      >
+                        Watch Stream
+                      </Button>
+                    </CardContent>
+                  </Card>
+                ))
+              ) : (
+                <div className="col-span-full text-center py-8">
+                  <p className="text-muted-foreground">No live streams right now</p>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
       </main>
     </div>
   )

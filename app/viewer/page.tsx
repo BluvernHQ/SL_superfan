@@ -12,6 +12,7 @@ import { ShareModal } from "@/components/share-modal"
 import { useSearchParams } from "next/navigation"
 import { auth } from "@/lib/firebase"
 import { getIdToken, onAuthStateChanged } from "firebase/auth"
+import { useRouter } from "next/navigation"
 
 // Video Player Component
 const VideoPlayer = ({ stream, muted, volume }: { stream: MediaStream; muted: boolean; volume: number }) => {
@@ -37,6 +38,7 @@ const VideoPlayer = ({ stream, muted, volume }: { stream: MediaStream; muted: bo
 export default function ViewerPage() {
   const searchParams = useSearchParams()
   const roomIdFromUrl = searchParams.get("roomId")
+  const router = useRouter()
 
   const [isFollowing, setIsFollowing] = useState(false)
   const [likes, setLikes] = useState(156)
@@ -55,6 +57,7 @@ export default function ViewerPage() {
   const [currentUserDisplayName, setCurrentUserDisplayName] = useState("Guest") // Default for chat
   const [isChatEnabled, setIsChatEnabled] = useState(true) // State for chat enablement
   const [isLiking, setIsLiking] = useState(false)
+  const [isFollowingAction, setIsFollowingAction] = useState(false)
 
   // Stream details from API
   const [streamDetails, setStreamDetails] = useState<{
@@ -736,39 +739,117 @@ export default function ViewerPage() {
   }
 
   // Add the `handleUnlike` function:
-  async function handleUnlike() {
-    if (!hasLiked || !roomId || isLiking) {
+  async function handleUnfollow() {
+    if (!auth.currentUser) {
+      router.push("/login?redirect=viewer&roomId=" + roomId)
       return
     }
-    setIsLiking(true)
+    if (!isFollowing || !roomId || isFollowingAction || !streamDetails?.streamerName) {
+      return
+    }
+    setIsFollowingAction(true)
     try {
       const headers = await getAuthHeaders()
-      const response = await fetch("https://superfan.alterwork.in/api/remove_like", {
+      const response = await fetch("https://superfan.alterwork.in/api/un_follow", {
         method: "POST",
         headers,
         body: JSON.stringify({
           payload: {
-            room_id: roomId,
+            unfollow: streamDetails.streamerName,
           },
         }),
       })
 
       if (response.ok) {
-        setLikes((prev) => Math.max(0, prev - 1)) // Ensure likes don't go below 0
-        setHasLiked(false)
-        log("Like successfully removed.")
+        setIsFollowing(false)
+        // Optionally, update followers count if API returns it
+        log(`Successfully unfollowed ${streamDetails.streamerName}.`)
       } else {
         const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
-        log(`Failed to remove like: ${response.status} - ${errorData.message || errorData.reason}`)
-        alert(`Failed to unlike stream: ${errorData.message || "Please try again."}`)
+        log(`Failed to unfollow: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to unfollow streamer: ${errorData.message || "Please try again."}`)
       }
     } catch (error: any) {
-      log(`Error removing like: ${error.message}`)
-      alert(`Error unliking stream: ${error.message}`)
+      log(`Error unfollowing streamer: ${error.message}`)
+      alert(`Error unfollowing streamer: ${error.message}`)
     } finally {
-      setIsLiking(false)
+      setIsFollowingAction(false)
     }
   }
+
+  async function handleFollow() {
+    if (!auth.currentUser) {
+      router.push("/login?redirect=viewer&roomId=" + roomId)
+      return
+    }
+    if (isFollowing || !roomId || isFollowingAction || !streamDetails?.streamerName) {
+      return
+    }
+    setIsFollowingAction(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/create_follower", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            follow: streamDetails.streamerName,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        setIsFollowing(true)
+        // Optionally, update followers count if API returns it
+        log(`Successfully followed ${streamDetails.streamerName}.`)
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        log(`Failed to follow: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to follow streamer: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      log(`Error following streamer: ${error.message}`)
+      alert(`Error following streamer: ${error.message}`)
+    } finally {
+      setIsFollowingAction(false)
+    }
+  }
+
+  const checkIfFollowing = async () => {
+    if (!auth.currentUser || !streamDetails?.streamerName) {
+      setIsFollowing(false)
+      return
+    }
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/did_follow", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            did_follow: streamDetails.streamerName,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setIsFollowing(data.followed)
+      } else {
+        console.error("Failed to check follow status:", response.status, response.statusText)
+        setIsFollowing(false)
+      }
+    } catch (error) {
+      console.error("Error checking follow status:", error)
+      setIsFollowing(false)
+    }
+  }
+
+  useEffect(() => {
+    if (streamDetails?.streamerName && currentUserDisplayName !== "Guest") {
+      checkIfFollowing()
+    }
+  }, [streamDetails?.streamerName, currentUserDisplayName])
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) {
@@ -849,6 +930,40 @@ export default function ViewerPage() {
   }
 
   console.log("Current streamDetails state in render:", streamDetails) // Debug log
+
+  async function handleUnlike() {
+    if (!hasLiked || !roomId || isLiking) {
+      return
+    }
+    setIsLiking(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/delete_like", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            room_id: roomId,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        setLikes((prev) => prev - 1)
+        setHasLiked(false)
+        log("Like successfully removed.")
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        log(`Failed to remove like: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to unlike stream: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      log(`Error removing like: ${error.message}`)
+      alert(`Error unliking stream: ${error.message}`)
+    } finally {
+      setIsLiking(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -1053,14 +1168,27 @@ export default function ViewerPage() {
                         </Button>
                         <Button
                           variant={isFollowing ? "secondary" : "default"}
-                          onClick={() => setIsFollowing(!isFollowing)}
+                          onClick={isFollowing ? handleUnfollow : handleFollow}
+                          disabled={
+                            isFollowingAction ||
+                            !auth.currentUser ||
+                            !streamDetails?.streamerName ||
+                            (auth.currentUser?.displayName || auth.currentUser?.email?.split("@")[0]) ===
+                              streamDetails?.streamerName
+                          }
                           className={
                             !isFollowing
                               ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
                               : ""
                           }
                         >
-                          {isFollowing ? "Following" : "Follow"}
+                          {isFollowingAction
+                            ? isFollowing
+                              ? "Unfollowing..."
+                              : "Following..."
+                            : isFollowing
+                              ? "Following"
+                              : "Follow"}
                         </Button>
                       </div>
                     </div>

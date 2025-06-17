@@ -153,6 +153,12 @@ export default function LoginPage() {
       const idToken = await firebaseUser.getIdToken(true) // Force refresh
 
       console.log("Creating user in database with token...")
+      console.log("Firebase ID Token:", idToken) // Added for debugging
+
+      const payload = {
+        username: firebaseUser.displayName || formData.username,
+      }
+      console.log("Payload for create_user:", payload) // Added for debugging
 
       const response = await fetch("https://superfan.alterwork.in/api/create_user", {
         method: "POST",
@@ -169,16 +175,21 @@ export default function LoginPage() {
 
       if (!response.ok) {
         const errorData = await response.json()
-        console.error("Database user creation failed:", errorData)
-        throw new Error(errorData.message || "Failed to create user in database")
+        console.error("Database user creation failed with status:", response.status, errorData)
+        throw new Error(errorData.message || `Failed to create user in database: ${response.statusText}`)
       }
 
       const userData = await response.json()
       console.log("User created in database successfully:", userData)
       return userData
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating user in database:", error)
-      throw error
+      if (error instanceof TypeError && error.message === "Failed to fetch") {
+        throw new Error(
+          "Network error: Could not connect to the server. Please check your internet connection or try again later.",
+        )
+      }
+      throw new Error(error.message || "An unexpected error occurred during user creation.")
     }
   }
 
