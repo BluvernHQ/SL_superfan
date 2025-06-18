@@ -46,7 +46,7 @@ export default function ViewerPage() {
   const [roomId, setRoomId] = useState(roomIdFromUrl || "")
   const [isWatching, setIsWatching] = useState(false)
   const [remoteFeeds, setRemoteFeeds] = useState<{ [key: string]: { stream: MediaStream } }>({})
-  const [currentViewers, setCurrentViewers] = useState(1234)
+  const [currentViewers, setCurrentViewers] = useState(1)
   const [connectionState, setConnectionState] = useState<string>("disconnected")
   const [isAudioMuted, setIsAudioMuted] = useState(true) // Muted by default
   const [volume, setVolume] = useState(50) // Volume from 0-100
@@ -239,7 +239,11 @@ export default function ViewerPage() {
 
         // Update the current viewers count with real data from API
         if (data.views !== undefined) {
-          setCurrentViewers(data.views)
+          // Ensure at least 1 viewer is shown when someone is actively watching
+          setCurrentViewers(Math.max(data.views, isWatching ? 1 : 0))
+        } else if (isWatching) {
+          // If no view data but someone is watching, show at least 1
+          setCurrentViewers(Math.max(currentViewers, 1))
         }
       } else {
         console.error("Failed to fetch view count:", response.status, response.statusText)

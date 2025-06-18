@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Play, User, LogOut, Home, Tv, ChevronDown, Camera } from "lucide-react" // Import Camera icon
+import { Play, User, LogOut, Home, ChevronDown, Camera } from "lucide-react" // Import Camera icon
 import Link from "next/link"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, signOut } from "firebase/auth"
@@ -146,14 +146,6 @@ export function Navigation() {
                       >
                         <User className="mr-2 h-4 w-4" />
                         <span>View Profile</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleProfileClick("/streamer")}
-                        className="flex items-center w-full px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
-                      >
-                        <Tv className="mr-2 h-4 w-4" />
-                        <span>Stream Dashboard</span>
                       </button>
 
                       <div className="border-t border-border my-1"></div>

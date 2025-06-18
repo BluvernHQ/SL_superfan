@@ -16,6 +16,7 @@ import { LiveChat } from "@/components/live-chat"
 import { ShareModal } from "@/components/share-modal"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { StreamDetailsModal } from "@/components/stream-details-modal" // Import the new modal component
+import { DeviceSelectionModal } from "@/components/device-selection-modal"
 
 export default function StreamerPage() {
   const [isStreaming, setIsStreaming] = useState(false)
@@ -43,6 +44,9 @@ export default function StreamerPage() {
   const [isLive, setIsLive] = useState(isStreaming)
   const [showStreamDetailsModal, setShowStreamDetailsModal] = useState(true) // Changed to true to open on load
   const [currentUserDisplayName, setCurrentUserDisplayName] = useState("Streamer") // For chat
+  const [showDeviceSelectionModal, setShowDeviceSelectionModal] = useState(false)
+  const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState<string | null>(null)
+  const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState<string | null>(null)
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const logsRef = useRef<HTMLDivElement>(null)
@@ -661,9 +665,8 @@ export default function StreamerPage() {
   }
 
   const handleStartStreamFromModal = async () => {
-    // This function is called when the "Start Stream" button inside the modal is clicked.
-    // It will trigger the actual startStreaming logic and then close the modal.
-    await startStreaming()
+    // Show device selection modal first
+    setShowDeviceSelectionModal(true)
     setShowStreamDetailsModal(false)
   }
 
@@ -681,7 +684,15 @@ export default function StreamerPage() {
     setIsLoading(true)
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: micEnabled, video: videoEnabled })
+      // Use selected devices or default constraints
+      const videoConstraints = selectedVideoDeviceId ? { deviceId: { exact: selectedVideoDeviceId } } : videoEnabled
+
+      const audioConstraints = selectedAudioDeviceId ? { deviceId: { exact: selectedAudioDeviceId } } : micEnabled
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+        video: videoConstraints,
+      })
       localStreamRef.current = stream
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
@@ -868,6 +879,19 @@ export default function StreamerPage() {
 
   const getUserDisplayName = () => {
     return user?.displayName || user?.email?.split("@")[0] || "User"
+  }
+
+  const handleDevicesSelected = (videoDeviceId: string | null, audioDeviceId: string | null) => {
+    setSelectedVideoDeviceId(videoDeviceId)
+    setSelectedAudioDeviceId(audioDeviceId)
+    // Now start streaming with selected devices
+    startStreaming()
+  }
+
+  const handleDevicePermissionDenied = () => {
+    setShowDeviceSelectionModal(false)
+    setShowStreamDetailsModal(true) // Go back to stream details modal
+    alert("Camera and microphone permissions are required to start streaming.")
   }
 
   return (
@@ -1065,6 +1089,14 @@ export default function StreamerPage() {
         onStartStream={handleStartStreamFromModal}
         isLoading={isLoading}
         firebaseUid={firebaseUid}
+      />
+
+      {/* Device Selection Modal */}
+      <DeviceSelectionModal
+        open={showDeviceSelectionModal}
+        onOpenChange={setShowDeviceSelectionModal}
+        onDevicesSelected={handleDevicesSelected}
+        onPermissionDenied={handleDevicePermissionDenied}
       />
     </div>
   )

@@ -5,12 +5,24 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Play, Users, Eye, UserMinus } from "lucide-react"
+import { Play, Users, Eye } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, getIdToken } from "firebase/auth"
 import { useRouter } from "next/navigation"
 import { VideoPlayerModal } from "@/components/video-player-modal" // Import the new modal
+
+interface UserProfileData {
+  UID: string
+  display_name: string
+  email: string
+  sessions: number
+  followers: number
+  following: number
+  status: string
+  blacklist: string[]
+  created_at: string
+}
 
 export default function ProfilePage({ params }: { params: { username: string } }) {
   const [isFollowing, setIsFollowing] = useState(false)
@@ -21,26 +33,19 @@ export default function ProfilePage({ params }: { params: { username: string } }
   const [isLoadingRecordings, setIsLoadingRecordings] = useState(true)
   const router = useRouter()
   const [isFollowingAction, setIsFollowingAction] = useState(false)
+  const [profileData, setProfileData] = useState<UserProfileData | null>(null) // New state for user profile data
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true) // New loading state for profile data
 
   // State for video player modal
   const [showVideoModal, setShowVideoModal] = useState(false)
   const [currentVideoUrl, setCurrentVideoUrl] = useState("")
   const [currentVideoTitle, setCurrentVideoTitle] = useState("")
 
-  // Mock profile data (will be partially replaced by API calls)
-  const profileUser = {
-    username: params.username,
-    followers: 2400, // This might also come from a user profile API later
-    following: 156, // This might also come from a user profile API later
-    isLive: false, // This should come from /get_live endpoint
-    currentStream: null, // This should come from /get_live endpoint
-  }
-
   // Helper function to get auth headers
   const getAuthHeaders = async () => {
     const headers: Record<string, string> = {
-      "Content-Type": "application/json",\
-      Accept": "application/json",
+      "Content-Type": "application/json",
+      Accept: "application/json", // Fixed: Removed the backslash here
     }
 
     if (auth.currentUser) {
@@ -65,6 +70,49 @@ export default function ProfilePage({ params }: { params: { username: string } }
     })
     return () => unsubscribe()
   }, [params.username])
+
+  const fetchUserDetails = async () => {
+    setIsLoadingProfile(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/get_user", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            username: params.username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data: UserProfileData = await response.json()
+        console.log("User details from /get_user:", data)
+        setProfileData(data)
+        // Update isOwnProfile based on fetched UID and current user's UID
+        if (currentUser && currentUser.uid === data.UID) {
+          setIsOwnProfile(true)
+        } else {
+          setIsOwnProfile(false)
+        }
+      } else {
+        console.error("Failed to fetch user details:", response.status, response.statusText)
+        setProfileData(null)
+      }
+    } catch (error) {
+      console.error("Error fetching user details:", error)
+      setProfileData(null)
+    } finally {
+      setIsLoadingProfile(false)
+    }
+  }
+
+  useEffect(() => {
+    if (params.username) {
+      fetchUserDetails()
+      fetchPastRecordings() // Keep fetching recordings
+    }
+  }, [params.username, currentUser]) // Re-fetch if username or auth status changes
 
   const fetchPastRecordings = async () => {
     setIsLoadingRecordings(true)
@@ -109,12 +157,6 @@ export default function ProfilePage({ params }: { params: { username: string } }
       setIsLoadingRecordings(false)
     }
   }
-
-  useEffect(() => {
-    if (params.username) {
-      fetchPastRecordings()
-    }
-  }, [params.username, currentUser]) // Re-fetch if username or auth status changes
 
   const handleBlacklistUser = (username: string) => {
     setBlacklistedUsers((prev) => [...prev, username])
@@ -177,6 +219,8 @@ export default function ProfilePage({ params }: { params: { username: string } }
         setIsFollowing(true)
         // Optionally, update followers count if API returns it
         console.log(`Successfully followed ${params.username}.`)
+        // Optimistically update followers count
+        setProfileData((prev) => (prev ? { ...prev, followers: prev.followers + 1 } : null))
       } else {
         const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
         console.error(`Failed to follow: ${response.status} - ${errorData.message || errorData.reason}`)
@@ -215,6 +259,8 @@ export default function ProfilePage({ params }: { params: { username: string } }
         setIsFollowing(false)
         // Optionally, update followers count if API returns it
         console.log(`Successfully unfollowed ${params.username}.`)
+        // Optimistically update followers count
+        setProfileData((prev) => (prev ? { ...prev, followers: Math.max(0, prev.followers - 1) } : null))
       } else {
         const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
         console.error(`Failed to unfollow: ${response.status} - ${errorData.message || errorData.reason}`)
@@ -277,66 +323,78 @@ export default function ProfilePage({ params }: { params: { username: string } }
           {/* Profile Header */}
           <Card className="lg:col-span-2">
             <CardContent className="p-6">
-              <div className="flex items-center gap-6">
-                <Avatar className="w-24 h-24">
-                  <AvatarImage
-                    src={`https://superfan.alterwork.in/files/profilepic/${profileUser.username}.png`}
-                    alt={profileUser.username}
-                    onError={(e) => {
-                      e.currentTarget.src = "/placeholder.svg?height=96&width=96"
-                    }}
-                  />
-                  <AvatarFallback className="text-2xl">{profileUser.username.charAt(0).toUpperCase()}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h1 className="text-3xl font-bold">@{profileUser.username}</h1>
+              {isLoadingProfile ? (
+                <div className="flex items-center gap-6 animate-pulse">
+                  <div className="w-24 h-24 rounded-full bg-muted"></div>
+                  <div className="flex-1 space-y-3">
+                    <div className="h-8 bg-muted rounded w-3/4"></div>
+                    <div className="flex gap-6">
+                      <div className="h-4 bg-muted rounded w-1/4"></div>
+                      <div className="h-4 bg-muted rounded w-1/4"></div>
+                    </div>
                   </div>
-                  <div className="flex gap-6 text-sm">
-                    <span>
-                      <strong>{formatNumber(profileUser.followers)}</strong> followers
-                    </span>
-                    {isOwnProfile && (
+                </div>
+              ) : profileData ? (
+                <div className="flex items-center gap-6">
+                  <Avatar className="w-24 h-24">
+                    <AvatarImage
+                      src={`https://superfan.alterwork.in/files/profilepic/${profileData?.display_name || params.username}.png`}
+                      alt={profileData?.display_name || params.username}
+                      onError={(e) => {
+                        e.currentTarget.src = "/placeholder.svg?height=96&width=96"
+                      }}
+                    />
+                    <AvatarFallback className="text-2xl">
+                      {profileData?.display_name?.charAt(0)?.toUpperCase() || params.username.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <h1 className="text-3xl font-bold">@{profileData?.display_name || params.username}</h1>
+                    </div>
+                    <div className="flex gap-6 text-sm">
                       <span>
-                        <strong>{formatNumber(profileUser.following)}</strong> following
+                        <strong>{formatNumber(profileData?.followers || 0)}</strong> followers
                       </span>
+                      <span>
+                        <strong>{formatNumber(profileData?.following || 0)}</strong> following
+                      </span>
+                      <span>
+                        <strong>{formatNumber(profileData?.sessions || 0)}</strong> sessions
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    {!isOwnProfile && (
+                      <>
+                        <Button
+                          variant={isFollowing ? "secondary" : "default"}
+                          onClick={isFollowing ? handleUnfollow : handleFollow}
+                          disabled={isFollowingAction || !currentUser || isOwnProfile}
+                          className={!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""}
+                        >
+                          {isFollowingAction
+                            ? isFollowing
+                              ? "Unfollowing..."
+                              : "Following..."
+                            : isFollowing
+                              ? "Following"
+                              : "Follow"}
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  {!isOwnProfile && (
-                    <>
-                      <Button
-                        variant={isFollowing ? "secondary" : "default"}
-                        onClick={isFollowing ? handleUnfollow : handleFollow}
-                        disabled={isFollowingAction || !currentUser || isOwnProfile}
-                        className={!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""}
-                      >
-                        {isFollowingAction
-                          ? isFollowing
-                            ? "Unfollowing..."
-                            : "Following..."
-                          : isFollowing
-                            ? "Following"
-                            : "Follow"}
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => handleBlacklistUser(profileUser.username)}
-                        className="text-red-600 hover:text-red-700"
-                      >
-                        <UserMinus className="w-4 h-4" />
-                      </Button>
-                    </>
-                  )}
+              ) : (
+                <div className="text-center text-muted-foreground py-8">
+                  <p>User profile not found.</p>
                 </div>
-              </div>
+              )}
             </CardContent>
           </Card>
 
           {/* Current Live Stream (Placeholder - will need API integration) */}
-          {profileUser.isLive && (
+          {profileData?.status === "live" && (
             <Card className="lg:col-span-1">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -349,16 +407,17 @@ export default function ProfilePage({ params }: { params: { username: string } }
               <CardContent className="pt-0">
                 <div className="space-y-4">
                   <div>
-                    <h3 className="font-semibold text-base mb-2 line-clamp-2">{profileUser.currentStream?.title}</h3>
+                    <h3 className="font-semibold text-base mb-2 line-clamp-2">{profileData.display_name}'s Stream</h3>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
                       <Users className="w-4 h-4" />
-                      {formatNumber(profileUser.currentStream?.viewers || 0)} watching
+                      {/* Assuming currentStream details would come from a separate API call or be part of profileData */}
+                      {formatNumber(0)} watching {/* Placeholder for live viewers */}
                     </div>
                   </div>
                   <Button
                     size="sm"
                     className="w-full bg-red-600 hover:bg-red-700"
-                    onClick={() => window.open(`/viewer?roomId=${profileUser.currentStream?.roomId}`, "_blank")}
+                    onClick={() => window.open(`/viewer?roomId=${profileData.UID}`, "_blank")} // Assuming UID can be used as roomId for live stream
                   >
                     <Play className="w-4 h-4 mr-2" />
                     Watch Live
