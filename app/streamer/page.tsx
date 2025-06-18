@@ -17,6 +17,8 @@ import { ShareModal } from "@/components/share-modal"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { StreamDetailsModal } from "@/components/stream-details-modal" // Import the new modal component
 import { DeviceSelectionModal } from "@/components/device-selection-modal"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { AlertCircle } from "lucide-react"
 
 export default function StreamerPage() {
   const [isStreaming, setIsStreaming] = useState(false)
@@ -42,11 +44,14 @@ export default function StreamerPage() {
   const [streamDuration, setStreamDuration] = useState("00:00:00")
   const [isLoading, setIsLoading] = useState(false)
   const [isLive, setIsLive] = useState(isStreaming)
-  const [showStreamDetailsModal, setShowStreamDetailsModal] = useState(true) // Changed to true to open on load
+  const [showStreamDetailsModal, setShowStreamDetailsModal] = useState(false) // Changed to false initially
   const [currentUserDisplayName, setCurrentUserDisplayName] = useState("Streamer") // For chat
   const [showDeviceSelectionModal, setShowDeviceSelectionModal] = useState(false)
   const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState<string | null>(null)
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState<string | null>(null)
+  const [userStatus, setUserStatus] = useState<string | null>(null)
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false)
+  const [showAlreadyLiveAlert, setShowAlreadyLiveAlert] = useState(false)
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const logsRef = useRef<HTMLDivElement>(null)
@@ -93,6 +98,8 @@ export default function StreamerPage() {
         setFirebaseUid(currentUser.uid)
         setCurrentUserDisplayName(currentUser.displayName || currentUser.email?.split("@")[0] || "Streamer")
         log("Firebase authenticated. UID: " + currentUser.uid)
+        // Check user status when authenticated
+        checkUserStatus(currentUser.displayName || currentUser.email?.split("@")[0] || "")
       } else {
         log("Not authenticated with Firebase. Redirecting to login...")
         router.push("/login")
@@ -100,6 +107,46 @@ export default function StreamerPage() {
     })
     return () => unsubscribe()
   }, [router])
+
+  // Function to check user status
+  const checkUserStatus = async (username: string) => {
+    if (!username) return
+
+    setIsCheckingStatus(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/get_user", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            username: username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        const status = data.user?.status || "notlive"
+        setUserStatus(status)
+        log(`User status: ${status}`)
+
+        // If user is already live, show alert
+        if (status !== "notlive") {
+          setShowAlreadyLiveAlert(true)
+          log("User is already live")
+        }
+      } else {
+        log(`Failed to check user status: ${response.status}`)
+        setUserStatus("notlive") // Default to not live if check fails
+      }
+    } catch (error: any) {
+      log(`Error checking user status: ${error.message}`)
+      setUserStatus("notlive") // Default to not live if check fails
+    } finally {
+      setIsCheckingStatus(false)
+    }
+  }
 
   const testServerConnection = async () => {
     log("Testing server connection...")
@@ -542,13 +589,20 @@ export default function StreamerPage() {
     throw new Error("Streamer: Failed to attach VideoRoom plugin")
   }
 
-  const createRoom = async (description: string) => {
+  /*
+const createRoom = async (description: string) => {
     if (!videoRoomPluginHandleRef.current) throw new Error("Streamer: Plugin handle not available for creating room")
+
+    // Use user's UID as room ID
+    const userRoomId = firebaseUid
+    if (!userRoomId) throw new Error("Streamer: User UID not available for room creation")
+
     const createMsg = {
       janus: "message",
       transaction: `createroom_${Date.now()}`,
       body: {
         request: "create",
+        room: userRoomId, // Use UID as room ID
         description: description,
         is_private: false,
         record: true,
@@ -557,7 +611,7 @@ export default function StreamerPage() {
       },
     }
 
-    log(`Sending createRoom message: ${JSON.stringify(createMsg)}`)
+    log(`Sending createRoom message with UID as room ID: ${JSON.stringify(createMsg)}`)
     const response = await sendToProxy(`/${janusSessionIdRef.current}/${videoRoomPluginHandleRef.current}`, createMsg)
 
     log(`Full createRoom response: ${JSON.stringify(response, null, 2)}`)
@@ -594,13 +648,14 @@ export default function StreamerPage() {
       throw new Error(`Streamer: Failed to create room: ${errorReason}`)
     }
   }
+*/
 
   const joinRoomAsPublisher = async (roomId: string) => {
     if (!videoRoomPluginHandleRef.current) throw new Error("Streamer: Plugin handle not available")
     const joinMsg = {
       janus: "message",
       transaction: `join_${Date.now()}`,
-      body: { request: "join", ptype: "publisher", room: roomId, display: "Streamer" },
+      body: { request: "join", ptype: "publisher", room: roomId, display: "Streamer" }, // Use roomId as string, Janus will handle conversion
     }
     const response = await sendToProxy(`/${janusSessionIdRef.current}/${videoRoomPluginHandleRef.current}`, joinMsg)
     if (response && (response.janus === "ack" || response.janus === "success")) {
@@ -665,7 +720,20 @@ export default function StreamerPage() {
   }
 
   const handleStartStreamFromModal = async () => {
+    // Check if user is already live
+    if (userStatus && userStatus !== "notlive") {
+      setShowAlreadyLiveAlert(true)
+      return
+    }
+
     // Show device selection modal first
+    setShowDeviceSelectionModal(true)
+    setShowStreamDetailsModal(false)
+  }
+
+  const handleContinueWithCurrentStream = () => {
+    setShowAlreadyLiveAlert(false)
+    // Show device selection modal to continue with current stream
     setShowDeviceSelectionModal(true)
     setShowStreamDetailsModal(false)
   }
@@ -701,7 +769,19 @@ export default function StreamerPage() {
 
       await createJanusSession()
       await attachVideoRoomPlugin()
-      const newRoomId = await createRoom(title)
+      // Remove this line:
+      // const newRoomId = await createRoom(title)
+
+      // Replace with:
+      const newRoomId = firebaseUid // Use UID directly as room ID
+      if (!newRoomId) {
+        throw new Error("User UID not available")
+      }
+
+      // Set the room ID immediately
+      setCreatedRoomId(newRoomId)
+      createdRoomIdRef.current = newRoomId
+      log(`Using user UID as room ID: ${newRoomId}`)
 
       log(`Room creation returned: ${newRoomId}`)
       log(`createdRoomId state is now: ${createdRoomId}`)
@@ -899,6 +979,35 @@ export default function StreamerPage() {
       <Navigation />
 
       <div className="container mx-auto p-4">
+        {/* Already Live Alert */}
+        {showAlreadyLiveAlert && (
+          <Alert className="mb-4 border-orange-300 bg-orange-50 dark:border-orange-800 dark:bg-orange-950">
+            <AlertCircle className="h-4 w-4 text-orange-600" />
+            <AlertDescription className="text-orange-800 dark:text-orange-200">
+              <div className="flex items-center justify-between">
+                <span>You are already live - continue with current streaming</span>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowAlreadyLiveAlert(false)}
+                    className="border-orange-300 text-orange-700 hover:bg-orange-100"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleContinueWithCurrentStream}
+                    className="bg-orange-600 text-white hover:bg-orange-700"
+                  >
+                    OK
+                  </Button>
+                </div>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-4">
@@ -912,8 +1021,8 @@ export default function StreamerPage() {
                   {!isStreaming && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                       <Button
-                        onClick={() => setShowStreamDetailsModal(true)} // This button will still open the modal if it's closed
-                        disabled={!firebaseUid || isLoading}
+                        onClick={() => setShowStreamDetailsModal(true)}
+                        disabled={!firebaseUid || isLoading || isCheckingStatus}
                         size="lg"
                         className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
                       >
@@ -921,6 +1030,11 @@ export default function StreamerPage() {
                           <>
                             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
                             Starting Stream...
+                          </>
+                        ) : isCheckingStatus ? (
+                          <>
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                            Checking Status...
                           </>
                         ) : (
                           <>

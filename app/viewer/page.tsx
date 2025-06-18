@@ -398,7 +398,7 @@ export default function ViewerPage() {
       body: {
         request: "join",
         ptype: "publisher",
-        room: Number.parseInt(roomId),
+        room: roomId,
         display: "Viewer_" + Date.now().toString().slice(-4),
       },
     }

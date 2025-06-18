@@ -118,8 +118,10 @@ export default function LoginPage() {
     try {
       setIsCheckingUsername(true)
 
-      // For username checking during signup, we don't need auth token
-      // as the user isn't authenticated yet
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
       const response = await fetch("https://superfan.alterwork.in/api/check_username", {
         method: "POST",
         headers: {
@@ -128,20 +130,33 @@ export default function LoginPage() {
         body: JSON.stringify({
           payload: { username },
         }),
+        signal: controller.signal,
       })
 
-      const data = await response.json()
+      clearTimeout(timeoutId)
 
       if (response.ok) {
         setUsernameStatus("available")
       } else if (response.status === 400) {
         setUsernameStatus("taken")
       } else {
+        console.warn(`Username check returned status ${response.status}`)
         setUsernameStatus("error")
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error checking username:", error)
-      setUsernameStatus("error")
+
+      // Handle different types of errors
+      if (error.name === "AbortError") {
+        console.warn("Username check timed out")
+        setUsernameStatus("error")
+      } else if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
+        console.warn("Network error during username check - allowing signup to proceed")
+        // Don't block signup for network issues - let the server validate during actual signup
+        setUsernameStatus("available")
+      } else {
+        setUsernameStatus("error")
+      }
     } finally {
       setIsCheckingUsername(false)
     }
@@ -252,8 +267,8 @@ export default function LoginPage() {
     }
 
     // Check if username is available
-    if (usernameStatus !== "available") {
-      setError("Please choose an available username")
+    if (usernameStatus === "taken") {
+      setError("Username is already taken. Please choose a different one.")
       setIsLoading(false)
       setSignupStep("complete")
       return
@@ -361,7 +376,7 @@ export default function LoginPage() {
       case "taken":
         return "Username is already taken"
       case "error":
-        return "Error checking username"
+        return "Unable to check availability - will verify during signup"
       default:
         return "3-20 characters, letters, numbers, and underscores only"
     }

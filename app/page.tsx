@@ -105,7 +105,18 @@ export default function HomePage() {
           followers: userData.followers || 0,
         }))
 
-        setAllUsers(transformedUsers)
+        // Filter out the current user from the list
+        const filteredUsers = transformedUsers.filter((userData) => {
+          if (!user) return true // Show all users if not authenticated
+
+          // Filter by display name or UID
+          const currentUserDisplayName = user.displayName
+          const currentUserUID = user.uid
+
+          return userData.username !== currentUserDisplayName && userData.id !== currentUserUID
+        })
+
+        setAllUsers(filteredUsers)
       } else {
         console.error("Failed to fetch users:", response.status, response.statusText)
         // Fallback to empty array if API fails

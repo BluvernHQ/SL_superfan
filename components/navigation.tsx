@@ -3,11 +3,12 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Play, User, LogOut, Home, ChevronDown, Camera } from "lucide-react" // Import Camera icon
+import { Play, User, LogOut, ChevronDown, Camera } from "lucide-react"
 import Link from "next/link"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, signOut } from "firebase/auth"
 import { useRouter } from "next/navigation"
+import { UserSearch } from "./user-search"
 
 export function Navigation() {
   const [user, setUser] = useState<any>(null)
@@ -88,12 +89,9 @@ export function Navigation() {
             </span>
           </Link>
 
-          {/* Navigation Links (can be expanded later) */}
-          <div className="hidden md:flex items-center space-x-6">
-            <Link href="/" className="flex items-center space-x-1 text-sm font-medium hover:text-primary">
-              <Home className="w-4 h-4" />
-              <span>Home</span>
-            </Link>
+          {/* Search Bar - replaces Home link */}
+          <div className="hidden md:flex items-center flex-1 max-w-md mx-8">
+            <UserSearch />
           </div>
 
           {/* User Menu and Start Stream Button */}

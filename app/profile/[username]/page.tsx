@@ -29,12 +29,15 @@ export default function ProfilePage({ params }: { params: { username: string } }
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [isOwnProfile, setIsOwnProfile] = useState(false)
   const [blacklistedUsers, setBlacklistedUsers] = useState<string[]>([])
+  const [isLoadingBlocklist, setIsLoadingBlocklist] = useState(false)
   const [pastRecordings, setPastRecordings] = useState<any[]>([])
   const [isLoadingRecordings, setIsLoadingRecordings] = useState(true)
   const router = useRouter()
   const [isFollowingAction, setIsFollowingAction] = useState(false)
   const [profileData, setProfileData] = useState<UserProfileData | null>(null) // New state for user profile data
   const [isLoadingProfile, setIsLoadingProfile] = useState(true) // New loading state for profile data
+  const [isBlocked, setIsBlocked] = useState(false)
+  const [isBlockingAction, setIsBlockingAction] = useState(false)
 
   // State for video player modal
   const [showVideoModal, setShowVideoModal] = useState(false)
@@ -87,8 +90,8 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
       if (response.ok) {
         const data: UserProfileData = await response.json()
-        console.log("User details from /get_user:", data)
-        setProfileData(data)
+        console.log("User details from /get_user:", data["user"])
+        setProfileData(data["user"])
         // Update isOwnProfile based on fetched UID and current user's UID
         if (currentUser && currentUser.uid === data.UID) {
           setIsOwnProfile(true)
@@ -110,9 +113,16 @@ export default function ProfilePage({ params }: { params: { username: string } }
   useEffect(() => {
     if (params.username) {
       fetchUserDetails()
-      fetchPastRecordings() // Keep fetching recordings
+      fetchPastRecordings()
     }
-  }, [params.username, currentUser]) // Re-fetch if username or auth status changes
+  }, [params.username, currentUser])
+
+  // Add a separate useEffect for blocklist that depends on currentUser (not just isOwnProfile)
+  useEffect(() => {
+    if (currentUser) {
+      fetchBlocklist()
+    }
+  }, [currentUser, params.username])
 
   const fetchPastRecordings = async () => {
     setIsLoadingRecordings(true)
@@ -158,12 +168,139 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
   }
 
-  const handleBlacklistUser = (username: string) => {
-    setBlacklistedUsers((prev) => [...prev, username])
+  const fetchBlocklist = async () => {
+    if (!currentUser) return
+
+    setIsLoadingBlocklist(true)
+    try {
+      const headers = await getAuthHeaders()
+
+      // Add timeout to prevent hanging requests
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
+      const response = await fetch("https://superfan.alterwork.in/api/fetch_blocklist", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            username: currentUser.displayName,
+          },
+        }),
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Blocklist data:", data)
+
+        // Handle the correct API response format: {'blocklist': [{'blocklist': 'username'}, ...]}
+        if (data.blocklist && Array.isArray(data.blocklist)) {
+          const usernames = data.blocklist.map((item: any) => item.blocklist || item)
+          setBlacklistedUsers(usernames)
+        } else {
+          console.warn("Unexpected blocklist response format:", data)
+          setBlacklistedUsers([])
+        }
+      } else {
+        console.error("Failed to fetch blocklist:", response.status, response.statusText)
+        // Don't show error to user, just use empty list
+        setBlacklistedUsers([])
+      }
+    } catch (error: any) {
+      console.error("Error fetching blocklist:", error)
+
+      if (error.name === "AbortError") {
+        console.log("Blocklist fetch request timed out")
+      } else if (error.message === "Failed to fetch") {
+        console.log("Network error fetching blocklist - using empty list")
+      }
+
+      // Gracefully handle error by using empty list
+      setBlacklistedUsers([])
+    } finally {
+      setIsLoadingBlocklist(false)
+    }
   }
 
-  const handleUnblacklistUser = (username: string) => {
-    setBlacklistedUsers((prev) => prev.filter((u) => u !== username))
+  const handleBlacklistUser = async (username: string) => {
+    if (!currentUser) return
+
+    try {
+      const headers = await getAuthHeaders()
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
+
+      const response = await fetch("https://superfan.alterwork.in/api/add_blocklist", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            blocklist_by: currentUser.displayName,
+            blocklist: username,
+          },
+        }),
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (response.ok) {
+        setBlacklistedUsers((prev) => [...prev, username])
+        console.log(`Successfully blocked ${username}`)
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        console.error(`Failed to block user: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to block user: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      console.error(`Error blocking user: ${error.message}`)
+      if (error.name !== "AbortError") {
+        alert(`Error blocking user: ${error.message}`)
+      }
+    }
+  }
+
+  const handleUnblacklistUser = async (username: string) => {
+    if (!currentUser) return
+
+    try {
+      const headers = await getAuthHeaders()
+
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
+
+      const response = await fetch("https://superfan.alterwork.in/api/remove_blocklist", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            blocklist_by: currentUser.displayName,
+            blocklist: username,
+          },
+        }),
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
+
+      if (response.ok) {
+        setBlacklistedUsers((prev) => prev.filter((u) => u !== username))
+        console.log(`Successfully unblocked ${username}`)
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        console.error(`Failed to unblock user: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to unblock user: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      console.error(`Error unblocking user: ${error.message}`)
+      if (error.name !== "AbortError") {
+        alert(`Error unblocking user: ${error.message}`)
+      }
+    }
   }
 
   const handlePlayRecording = (recording: any) => {
@@ -304,11 +441,121 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
   }
 
+  const checkIfBlocked = async () => {
+    if (!currentUser || isOwnProfile) {
+      setIsBlocked(false)
+      return
+    }
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/is_blocklist", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            blocklist: params.username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setIsBlocked(data.blocked || false)
+      } else {
+        console.error("Failed to check block status:", response.status, response.statusText)
+        setIsBlocked(false)
+      }
+    } catch (error) {
+      console.error("Error checking block status:", error)
+      setIsBlocked(false)
+    }
+  }
+
   useEffect(() => {
     if (params.username && currentUser) {
       checkIfFollowing()
+      checkIfBlocked()
     }
   }, [params.username, currentUser, isOwnProfile])
+
+  const handleBlockUser = async () => {
+    if (!currentUser || isOwnProfile) return
+
+    setIsBlockingAction(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/add_blocklist", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            blocklist_by: currentUser.displayName,
+            blocklist: params.username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        setIsBlocked(true)
+        console.log(`Successfully blocked ${params.username}`)
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        console.error(`Failed to block user: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to block user: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      console.error(`Error blocking user: ${error.message}`)
+      alert(`Error blocking user: ${error.message}`)
+    } finally {
+      setIsBlockingAction(false)
+    }
+  }
+
+  const handleUnblockUser = async () => {
+    if (!currentUser || isOwnProfile) return
+
+    setIsBlockingAction(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/remove_blocklist", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            blocklist_by: currentUser.displayName,
+            blocklist: params.username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        setIsBlocked(false)
+        console.log(`Successfully unblocked ${params.username}`)
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        console.error(`Failed to unblock user: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to unblock user: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      console.error(`Error unblocking user: ${error.message}`)
+      alert(`Error unblocking user: ${error.message}`)
+    } finally {
+      setIsBlockingAction(false)
+    }
+  }
+
+  useEffect(() => {
+    // Reset states when navigating to a different profile
+    setProfileData(null)
+    setIsLoadingProfile(true)
+    setPastRecordings([])
+    setIsLoadingRecordings(true)
+    setBlacklistedUsers([])
+    setIsLoadingBlocklist(false)
+    setIsFollowing(false)
+    setIsBlocked(false)
+    setIsOwnProfile(false)
+  }, [params.username])
 
   console.log("ProfilePage rendering. isLoadingRecordings:", isLoadingRecordings)
   console.log("ProfilePage rendering. pastRecordings.length:", pastRecordings.length)
@@ -364,26 +611,37 @@ export default function ProfilePage({ params }: { params: { username: string } }
                       </span>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    {!isOwnProfile && (
-                      <>
-                        <Button
-                          variant={isFollowing ? "secondary" : "default"}
-                          onClick={isFollowing ? handleUnfollow : handleFollow}
-                          disabled={isFollowingAction || !currentUser || isOwnProfile}
-                          className={!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""}
-                        >
-                          {isFollowingAction
-                            ? isFollowing
-                              ? "Unfollowing..."
-                              : "Following..."
-                            : isFollowing
-                              ? "Following"
-                              : "Follow"}
-                        </Button>
-                      </>
-                    )}
-                  </div>
+                  {!isOwnProfile && currentUser && currentUser.displayName !== params.username && (
+                    <div className="flex gap-2">
+                      <Button
+                        variant={isFollowing ? "secondary" : "default"}
+                        onClick={isFollowing ? handleUnfollow : handleFollow}
+                        disabled={isFollowingAction || !currentUser}
+                        className={!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""}
+                      >
+                        {isFollowingAction
+                          ? isFollowing
+                            ? "Unfollowing..."
+                            : "Following..."
+                          : isFollowing
+                            ? "Following"
+                            : "Follow"}
+                      </Button>
+                      <Button
+                        variant={isBlocked ? "outline" : "destructive"}
+                        onClick={isBlocked ? handleUnblockUser : handleBlockUser}
+                        disabled={isBlockingAction || !currentUser}
+                      >
+                        {isBlockingAction
+                          ? isBlocked
+                            ? "Unblocking..."
+                            : "Blocking..."
+                          : isBlocked
+                            ? "Unblock"
+                            : "Block"}
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center text-muted-foreground py-8">
@@ -489,14 +747,23 @@ export default function ProfilePage({ params }: { params: { username: string } }
           </CardContent>
         </Card>
 
-        {/* Blacklisted Users (Only for own profile) */}
-        {isOwnProfile && (
+        {/* Blacklisted Users (For any logged-in user) */}
+        {currentUser && (
           <Card>
             <CardHeader>
               <CardTitle>Blacklisted Users</CardTitle>
             </CardHeader>
             <CardContent>
-              {blacklistedUsers.length > 0 ? (
+              {isLoadingBlocklist ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <div key={index} className="flex items-center justify-between p-2 border rounded animate-pulse">
+                      <div className="h-4 bg-muted rounded w-1/3"></div>
+                      <div className="h-8 bg-muted rounded w-16"></div>
+                    </div>
+                  ))}
+                </div>
+              ) : blacklistedUsers.length > 0 ? (
                 <div className="space-y-2">
                   {blacklistedUsers.map((username) => (
                     <div key={username} className="flex items-center justify-between p-2 border rounded">
