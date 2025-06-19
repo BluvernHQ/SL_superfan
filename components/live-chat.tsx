@@ -24,9 +24,10 @@ interface LiveChatProps {
   roomId: string | null
   currentUserDisplayName: string
   enableChat: boolean
+  isBlocked?: boolean // New prop to indicate if the current user is blocked
 }
 
-export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveChatProps) {
+export function LiveChat({ roomId, currentUserDisplayName, enableChat, isBlocked = false }: LiveChatProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [newMessage, setNewMessage] = useState("")
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -35,16 +36,17 @@ export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveCha
   const CHAT_WEBSOCKET_URL = "wss://superfan.alterwork.in/chat"
 
   useEffect(() => {
-    if (!roomId || !enableChat) {
+    // Close existing connection if chat is disabled, room is not set, or user is blocked
+    if (!roomId || !enableChat || isBlocked) {
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
       }
-      setMessages([]) // Clear messages if chat is disabled or room is not set
+      setMessages([]) // Clear messages if chat is disabled or room is not set or user is blocked
       return
     }
 
-    // Close existing connection if any
+    // Close existing connection if any before creating a new one
     if (wsRef.current) {
       wsRef.current.close()
     }
@@ -89,9 +91,8 @@ export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveCha
         console.warn("WebSocket connection unexpectedly closed. Attempting to reconnect...")
         // Simple reconnect logic, could be more robust with backoff
         setTimeout(() => {
-          if (roomId && enableChat) {
-            // Only try to reconnect if still in a room and chat is enabled
-            // This prevents infinite reconnects if the room is gone or chat is intentionally off
+          if (roomId && enableChat && !isBlocked) {
+            // Only try to reconnect if still in a room, chat is enabled, and not blocked
             if (!wsRef.current || wsRef.current.readyState === WebSocket.CLOSED) {
               // Only reconnect if no other connection is pending/open
               console.log("Attempting WebSocket reconnect...")
@@ -109,7 +110,7 @@ export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveCha
         wsRef.current = null
       }
     }
-  }, [roomId, enableChat]) // Reconnect if roomId or enableChat changes
+  }, [roomId, enableChat, isBlocked]) // Reconnect if roomId, enableChat, or isBlocked changes
 
   // Auto scroll to bottom for new messages
   useEffect(() => {
@@ -123,7 +124,13 @@ export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveCha
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!newMessage.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+    if (
+      !newMessage.trim() ||
+      !wsRef.current ||
+      wsRef.current.readyState !== WebSocket.OPEN ||
+      isBlocked ||
+      currentUserDisplayName === "Guest"
+    ) {
       return
     }
 
@@ -141,7 +148,7 @@ export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveCha
         message: newMessage.trim(),
         timestamp: new Date(),
         type: "message",
-        avatar: `/placeholder.svg?height=32&width=32&query=avatar-${currentUserDisplayName.charAt(0)}`,
+        avatar: `https://superfan.alterwork.in/files/profilepic/${currentUserDisplayName}.png`,
       }
       setMessages((prev) => [...prev, sentMessage])
       setNewMessage("")
@@ -155,6 +162,14 @@ export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveCha
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   }
 
+  const isChatInputDisabled =
+    !enableChat ||
+    !roomId ||
+    !wsRef.current ||
+    wsRef.current.readyState !== WebSocket.OPEN ||
+    isBlocked ||
+    currentUserDisplayName === "Guest"
+
   return (
     <div className="flex flex-col h-full bg-card">
       {/* Chat Messages */}
@@ -162,7 +177,13 @@ export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveCha
         <div className="p-4 space-y-4">
           {messages.length === 0 && (
             <div className="text-center text-muted-foreground py-4">
-              {enableChat ? "No messages yet. Be the first to say hi!" : "Chat is disabled for this stream."}
+              {isBlocked
+                ? "You are blocked from participating in this chat."
+                : currentUserDisplayName === "Guest"
+                  ? "Log in to join the chat."
+                  : enableChat
+                    ? "No messages yet. Be the first to say hi!"
+                    : "Chat is disabled for this stream."}
             </div>
           )}
           {messages.map((msg) => (
@@ -231,18 +252,24 @@ export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveCha
           <div className="flex-1 flex gap-2 items-center">
             <div className="relative flex-1">
               <Input
-                placeholder={`Chat as @${currentUserDisplayName}...`}
+                placeholder={
+                  isBlocked
+                    ? "You are blocked from this chat"
+                    : currentUserDisplayName === "Guest"
+                      ? "Log in to chat..."
+                      : `Chat as @${currentUserDisplayName}...`
+                }
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 className="pr-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
-                disabled={!enableChat || !roomId || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN}
+                disabled={isChatInputDisabled}
               />
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
                 className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground hover:text-foreground"
-                disabled={!enableChat || !roomId || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN}
+                disabled={isChatInputDisabled}
               >
                 <Smile className="h-4 w-4" />
               </Button>
@@ -252,13 +279,7 @@ export function LiveChat({ roomId, currentUserDisplayName, enableChat }: LiveCha
               type="submit"
               size="sm"
               className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-              disabled={
-                !enableChat ||
-                !roomId ||
-                !newMessage.trim() ||
-                !wsRef.current ||
-                wsRef.current.readyState !== WebSocket.OPEN
-              }
+              disabled={isChatInputDisabled || !newMessage.trim()}
             >
               <Send className="h-4 w-4" />
             </Button>

@@ -13,6 +13,7 @@ import { useSearchParams } from "next/navigation"
 import { auth } from "@/lib/firebase"
 import { getIdToken, onAuthStateChanged } from "firebase/auth"
 import { useRouter } from "next/navigation"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar" // Import Avatar components
 
 // Video Player Component
 const VideoPlayer = ({ stream, muted, volume }: { stream: MediaStream; muted: boolean; volume: number }) => {
@@ -38,6 +39,7 @@ const VideoPlayer = ({ stream, muted, volume }: { stream: MediaStream; muted: bo
 export default function ViewerPage() {
   const searchParams = useSearchParams()
   const roomIdFromUrl = searchParams.get("roomId")
+  const hookIdFromUrl = searchParams.get("hookId") // Get hookId from URL
   const router = useRouter()
 
   const [isFollowing, setIsFollowing] = useState(false)
@@ -58,6 +60,7 @@ export default function ViewerPage() {
   const [isChatEnabled, setIsChatEnabled] = useState(true) // State for chat enablement
   const [isLiking, setIsLiking] = useState(false)
   const [isFollowingAction, setIsFollowingAction] = useState(false)
+  const [isBlockedByStreamer, setIsBlockedByStreamer] = useState(false) // New state for block status
 
   // Stream details from API
   const [streamDetails, setStreamDetails] = useState<{
@@ -855,6 +858,54 @@ export default function ViewerPage() {
     }
   }, [streamDetails?.streamerName, currentUserDisplayName])
 
+  // New function to check if the current user is blocked by the streamer
+  const checkBlocklistStatus = async () => {
+    // Only check if logged in and streamer name is available
+    if (currentUserDisplayName === "Guest" || !streamDetails?.streamerName) {
+      setIsBlockedByStreamer(false) // Not blocked if not logged in or no streamer name
+      return
+    }
+
+    // If the current user is the streamer, they cannot be blocked from their own chat
+    if (currentUserDisplayName === streamDetails.streamerName) {
+      setIsBlockedByStreamer(false)
+      return
+    }
+
+    log(`Checking blocklist status for ${currentUserDisplayName} by ${streamDetails.streamerName}...`)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/ami_blocklist", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            blocklist: streamDetails.streamerName, // The owner of the blocklist
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setIsBlockedByStreamer(data.blocked)
+        log(`Blocklist status: ${data.blocked ? "Blocked" : "Not Blocked"}`)
+      } else {
+        console.error("Failed to check blocklist status:", response.status, response.statusText)
+        setIsBlockedByStreamer(false) // Default to not blocked on error
+      }
+    } catch (error) {
+      console.error("Error checking blocklist status:", error)
+      setIsBlockedByStreamer(false) // Default to not blocked on error
+    }
+  }
+
+  // Trigger blocklist check when streamDetails or currentUserDisplayName changes
+  useEffect(() => {
+    if (streamDetails?.streamerName && currentUserDisplayName) {
+      checkBlocklistStatus()
+    }
+  }, [streamDetails?.streamerName, currentUserDisplayName])
+
   const formatNumber = (num: number) => {
     if (num >= 1000000) {
       return (num / 1000000).toFixed(1) + "M"
@@ -881,9 +932,14 @@ export default function ViewerPage() {
 
         // Convert the streams object to an array and filter out current room
         const streamsArray = Object.entries(data.live || {})
-          .filter(([sessionId, streamData]: [string, any]) => streamData.roomId !== roomId)
+          .filter(
+            ([sessionId, streamData]: [string, any]) =>
+              // Exclude current room by roomId OR hookId
+              streamData.roomId !== roomId && streamData.hookId !== hookIdFromUrl,
+          )
           .map(([sessionId, streamData]: [string, any]) => {
-            const thumbnailUrl = `/files/thumbnails/${streamData.roomId}.jpg`
+            // Use streamData.hookId for the thumbnail URL
+            const thumbnailUrl = `https://superfan.alterwork.in/files/thumbnails/${streamData.hookId}.jpg`
             console.log("Generated sidebar thumbnail URL:", thumbnailUrl) // Debug log
 
             return {
@@ -914,7 +970,7 @@ export default function ViewerPage() {
     // Poll for updates every 60 seconds
     const interval = setInterval(fetchSidebarStreams, 30000) // Update every 30 seconds
     return () => clearInterval(interval)
-  }, [roomId])
+  }, [roomId, hookIdFromUrl]) // Add hookIdFromUrl to dependencies
 
   const getStreamUrl = () => {
     if (roomId) {
@@ -1110,9 +1166,18 @@ export default function ViewerPage() {
                               </Badge>
                             </div>
                             <div className="flex items-center gap-3 mb-4">
-                              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-orange-600 to-orange-500 flex items-center justify-center text-white font-bold">
-                                {streamDetails?.streamerName?.charAt(0)?.toUpperCase() || "S"}
-                              </div>
+                              <Avatar className="w-10 h-10">
+                                <AvatarImage
+                                  src={`https://superfan.alterwork.in/files/profilepic/${streamDetails?.streamerName}.png`}
+                                  alt={streamDetails?.streamerName || "Streamer"}
+                                  onError={(e) => {
+                                    e.currentTarget.src = "/placeholder.svg?height=40&width=40"
+                                  }}
+                                />
+                                <AvatarFallback>
+                                  {streamDetails?.streamerName?.charAt(0)?.toUpperCase() || "S"}
+                                </AvatarFallback>
+                              </Avatar>
                               <div>
                                 <div className="font-medium">@{streamDetails?.streamerName || "Streamer"}</div>
                                 <div className="text-sm text-muted-foreground">Broadcasting live</div>
@@ -1238,7 +1303,7 @@ export default function ViewerPage() {
                             onError={(e) => {
                               console.error("Sidebar thumbnail failed to load:", e.currentTarget.src)
                               // Try the full URL first
-                              const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.roomId}.jpg`
+                              const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.hooId}.jpg` // Use hooId here
                               if (e.currentTarget.src !== fullUrl) {
                                 console.log("Trying full sidebar URL:", fullUrl)
                                 e.currentTarget.src = fullUrl
@@ -1283,7 +1348,12 @@ export default function ViewerPage() {
                 <CardTitle className="text-lg">Live Chat</CardTitle>
               </CardHeader>
               <CardContent className="p-0 h-[calc(100%-70px)]">
-                <LiveChat roomId={roomId} currentUserDisplayName={currentUserDisplayName} enableChat={isChatEnabled} />
+                <LiveChat
+                  roomId={roomId}
+                  currentUserDisplayName={currentUserDisplayName}
+                  enableChat={isChatEnabled}
+                  isBlocked={isBlockedByStreamer} // Pass the new prop
+                />
               </CardContent>
             </Card>
           </div>

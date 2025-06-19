@@ -270,7 +270,7 @@ export default function HomePage() {
                         onError={(e) => {
                           console.error("Thumbnail failed to load:", e.currentTarget.src)
                           // Try the full URL first
-                          const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.roomId}.jpg`
+                          const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.hookId}.jpg`
                           if (e.currentTarget.src !== fullUrl) {
                             console.log("Trying full URL:", fullUrl)
                             e.currentTarget.src = fullUrl

@@ -67,8 +67,11 @@ export default function ProfilePage({ params }: { params: { username: string } }
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user)
+      // Initial check for own profile based on display name
       if (user?.displayName === params.username) {
         setIsOwnProfile(true)
+      } else {
+        setIsOwnProfile(false) // Ensure it's false if not own profile
       }
     })
     return () => unsubscribe()
@@ -92,7 +95,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
         const data: UserProfileData = await response.json()
         console.log("User details from /get_user:", data["user"])
         setProfileData(data["user"])
-        // Update isOwnProfile based on fetched UID and current user's UID
+        // Update isOwnProfile based on fetched UID and current user's UID (more reliable)
         if (currentUser && currentUser.uid === data.UID) {
           setIsOwnProfile(true)
         } else {
@@ -117,12 +120,15 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
   }, [params.username, currentUser])
 
-  // Add a separate useEffect for blocklist that depends on currentUser (not just isOwnProfile)
+  // Modified useEffect for blocklist: only fetch if it's the current user's own profile
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && isOwnProfile) {
       fetchBlocklist()
+    } else if (currentUser && !isOwnProfile) {
+      // If it's not the own profile, ensure blocklist is cleared
+      setBlacklistedUsers([])
     }
-  }, [currentUser, params.username])
+  }, [currentUser, isOwnProfile, params.username])
 
   const fetchPastRecordings = async () => {
     setIsLoadingRecordings(true)
@@ -144,11 +150,11 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
         if (Array.isArray(data.user)) {
           const transformedRecordings = data.user.map((rec: any) => ({
-            id: rec.roomId, // Use roomId as unique ID
+            id: rec.hookId, // Use roomId as unique ID
             title: rec.description || `Recording from ${rec.start ? rec.start.split("T")[0] : "Unknown Date"}`, // Use room_description if available, fallback to formatted date
             views: rec.maxviews || 0,
             date: formatDate(rec.start), // Format start time as date
-            thumbnail: `https://superfan.alterwork.in/files/thumbnails/${rec.roomId}.jpg`,
+            thumbnail: `https://superfan.alterwork.in/files/thumbnails/${rec.hookId}.jpg`,
           }))
           console.log("Transformed recordings for UI:", transformedRecordings) // Debug log
           setPastRecordings(transformedRecordings)
@@ -748,7 +754,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
         </Card>
 
         {/* Blacklisted Users (For any logged-in user) */}
-        {currentUser && (
+        {currentUser && isOwnProfile && (
           <Card>
             <CardHeader>
               <CardTitle>Blacklisted Users</CardTitle>
