@@ -145,7 +145,7 @@ export function DeviceSelectionModal({
 
       // Create constraints for the selected device
       const constraints: MediaStreamConstraints = {
-        video: videoDeviceId === "default" ? true : { deviceId: { ideal: videoDeviceId } }, // Use 'ideal' instead of 'exact'
+        video: videoDeviceId === "default" ? true : { deviceId: { exact: videoDeviceId } }, // Use 'ideal' instead of 'exact'
         audio: false, // No audio for preview
       }
 

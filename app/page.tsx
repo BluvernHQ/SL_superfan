@@ -40,7 +40,7 @@ export default function HomePage() {
         console.log("Live streams data:", data) // Debug log
 
         const streamsArray = Object.entries(data.live || {}).map(([sessionId, streamData]: [string, any]) => {
-          const thumbnailUrl = `/files/thumbnails/${streamData.roomId}.jpg`
+          const thumbnailUrl = `/files/thumbnails/${streamData.hookId}.jpg`
           console.log("Generated thumbnail URL:", thumbnailUrl) // Debug log
 
           return {

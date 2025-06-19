@@ -1,6 +1,6 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 import {
   Dialog,
   DialogContent,
@@ -20,20 +20,18 @@ import { Plus, X } from "lucide-react"
 interface StreamDetailsModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  title: string
-  setTitle: (title: string) => void
-  description: string
-  setDescription: (description: string) => void
-  tags: string[]
-  setTags: (tags: string[]) => void
-  newTag: string
-  setNewTag: (tag: string) => void
-  handleAddTag: () => void
-  handleRemoveTag: (tag: string) => void
-  handleKeyPress: (e: React.KeyboardEvent) => void
-  enableChat: boolean
-  setEnableChat: (enabled: boolean) => void
-  onStartStream: () => void
+  // These props are now for initial values or controlled inputs within the modal
+  initialTitle: string
+  initialDescription: string
+  initialTags: string[]
+  initialEnableChat: boolean
+  // This callback now passes the collected details
+  onConfirmDetails: (details: {
+    title: string
+    description: string
+    tags: string[]
+    enableChat: boolean
+  }) => void
   isLoading: boolean
   firebaseUid: string | null
 }
@@ -41,23 +39,51 @@ interface StreamDetailsModalProps {
 export function StreamDetailsModal({
   open,
   onOpenChange,
-  title,
-  setTitle,
-  description,
-  setDescription,
-  tags,
-  setTags,
-  newTag,
-  setNewTag,
-  handleAddTag,
-  handleRemoveTag,
-  handleKeyPress,
-  enableChat,
-  setEnableChat,
-  onStartStream,
+  initialTitle,
+  initialDescription,
+  initialTags,
+  initialEnableChat,
+  onConfirmDetails,
   isLoading,
   firebaseUid,
 }: StreamDetailsModalProps) {
+  // Internal states for the modal's form fields
+  const [title, setTitle] = React.useState(initialTitle)
+  const [description, setDescription] = React.useState(initialDescription)
+  const [tags, setTags] = React.useState(initialTags)
+  const [newTag, setNewTag] = React.useState("")
+  const [enableChat, setEnableChat] = React.useState(initialEnableChat)
+
+  // Update internal states when initial props change (e.g., for "Continue with Old")
+  React.useEffect(() => {
+    setTitle(initialTitle)
+    setDescription(initialDescription)
+    setTags(initialTags)
+    setEnableChat(initialEnableChat)
+  }, [initialTitle, initialDescription, initialTags, initialEnableChat])
+
+  const handleAddTag = () => {
+    if (newTag.trim() && !tags.includes(newTag.trim()) && tags.length < 5) {
+      setTags([...tags, newTag.trim()])
+      setNewTag("")
+    }
+  }
+
+  const handleRemoveTag = (tagToRemove: string) => {
+    setTags(tags.filter((tag) => tag !== tagToRemove))
+  }
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault()
+      handleAddTag()
+    }
+  }
+
+  const handleStartStreamClick = () => {
+    onConfirmDetails({ title, description, tags, enableChat })
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]" hideCloseButton={true}>
@@ -151,7 +177,7 @@ export function StreamDetailsModal({
         </div>
         <DialogFooter>
           <Button
-            onClick={onStartStream}
+            onClick={handleStartStreamClick}
             disabled={!firebaseUid || isLoading || !title.trim() || !description.trim()} // Updated disabled condition
             className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
           >

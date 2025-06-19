@@ -1,7 +1,5 @@
 "use client"
 
-import type React from "react"
-
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -44,14 +42,28 @@ export default function StreamerPage() {
   const [streamDuration, setStreamDuration] = useState("00:00:00")
   const [isLoading, setIsLoading] = useState(false)
   const [isLive, setIsLive] = useState(isStreaming)
-  const [showStreamDetailsModal, setShowStreamDetailsModal] = useState(false) // Changed to false initially
+  const [showStreamDetailsModal, setShowStreamDetailsModal] = useState(false)
   const [currentUserDisplayName, setCurrentUserDisplayName] = useState("Streamer") // For chat
   const [showDeviceSelectionModal, setShowDeviceSelectionModal] = useState(false)
-  const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState<string | null>(null)
-  const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState<string | null>(null)
-  const [userStatus, setUserStatus] = useState<string | null>(null)
+  const [selectedVideoDeviceId, setSelectedVideoDeviceId] = useState<string | null>(null) // Keep for modal's initial value
+  const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState<string | null>(null) // Keep for modal's initial value
+  const [userStatus, setUserStatus] = useState<string | null>(null) // "notlive" or existing hookId
   const [isCheckingStatus, setIsCheckingStatus] = useState(false)
   const [showAlreadyLiveAlert, setShowAlreadyLiveAlert] = useState(false)
+
+  // New states for existing stream details and stream type
+  const [existingHookId, setExistingHookId] = useState<string | null>(null) // This is the 'status' from /get_user
+  const [existingStreamTitle, setExistingStreamTitle] = useState<string>("")
+  const [existingStreamDescription, setExistingStreamDescription] = useState<string>("")
+  const [existingStreamChatEnabled, setExistingStreamChatEnabled] = useState<boolean>(true)
+  const [streamType, setStreamType] = useState<"new" | "old">("new") // To differentiate for /create_stream API
+  const [currentHookId, setCurrentHookId] = useState<string | null>(null) // The hookId for URL sharing
+
+  // States to pass to StreamDetailsModal for initial values
+  const [modalTitle, setModalTitle] = useState("")
+  const [modalDescription, setModalDescription] = useState("")
+  const [modalTags, setModalTags] = useState<string[]>([])
+  const [modalEnableChat, setModalEnableChat] = useState(true)
 
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const logsRef = useRef<HTMLDivElement>(null)
@@ -65,10 +77,11 @@ export default function StreamerPage() {
   const myPrivateIdRef = useRef<string | null>(null)
   const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const stopSessionPollingRef = useRef(false)
-  const createdRoomIdRef = useRef<string | null>(null)
+  const createdRoomIdRef = useRef<string | null>(null) // This will always be firebaseUid
 
   const FLASK_PROXY_URL = "https://superfan.alterwork.in/api/janus_proxy"
   const FLASK_SERVER_URL = "https://superfan.alterwork.in/api/create_stream"
+  const GET_LIVE_DET_URL = "https://superfan.alterwork.in/api/get_live_det"
 
   // Helper function to get auth headers
   const getAuthHeaders = async () => {
@@ -98,8 +111,6 @@ export default function StreamerPage() {
         setFirebaseUid(currentUser.uid)
         setCurrentUserDisplayName(currentUser.displayName || currentUser.email?.split("@")[0] || "Streamer")
         log("Firebase authenticated. UID: " + currentUser.uid)
-        // Check user status when authenticated
-        checkUserStatus(currentUser.displayName || currentUser.email?.split("@")[0] || "")
       } else {
         log("Not authenticated with Firebase. Redirecting to login...")
         router.push("/login")
@@ -108,9 +119,52 @@ export default function StreamerPage() {
     return () => unsubscribe()
   }, [router])
 
+  // NEW: Trigger initial flow when firebaseUid is available
+  useEffect(() => {
+    if (firebaseUid && currentUserDisplayName) {
+      checkUserStatus(currentUserDisplayName)
+    }
+  }, [firebaseUid, currentUserDisplayName]) // Depend on firebaseUid and currentUserDisplayName
+
+  // Function to fetch live stream details for an existing session
+  const fetchLiveStreamDetails = async (roomId: string) => {
+    log(`Fetching live stream details for room ID: ${roomId}`)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch(GET_LIVE_DET_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            room_id: roomId, // Use room_id (user UID) as per instruction
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        log(`Live stream details fetched: ${JSON.stringify(data)}`)
+        setExistingStreamTitle(data.title || "")
+        setExistingStreamDescription(data.description || "")
+        setExistingStreamChatEnabled(data.chatEnabled !== undefined ? data.chatEnabled : true)
+        return {
+          title: data.title,
+          description: data.description,
+          chatEnabled: data.chatEnabled,
+        }
+      } else {
+        log(`Failed to fetch live stream details: ${response.status} ${response.statusText}`)
+        return null
+      }
+    } catch (error: any) {
+      log(`Error fetching live stream details: ${error.message}`)
+      return null
+    }
+  }
+
   // Function to check user status
   const checkUserStatus = async (username: string) => {
-    if (!username) return
+    if (!username || !firebaseUid) return // Ensure firebaseUid is available
 
     setIsCheckingStatus(true)
     try {
@@ -131,18 +185,25 @@ export default function StreamerPage() {
         setUserStatus(status)
         log(`User status: ${status}`)
 
-        // If user is already live, show alert
+        // If user is already live, show alert and fetch details
         if (status !== "notlive") {
+          setExistingHookId(status) // This is the hookId for URL sharing
+          await fetchLiveStreamDetails(firebaseUid) // Fetch details using UID as room_id
           setShowAlreadyLiveAlert(true)
           log("User is already live")
+        } else {
+          // If not live, automatically open the stream details modal for a new stream
+          handleInitialStartStreamSetup()
         }
       } else {
         log(`Failed to check user status: ${response.status}`)
         setUserStatus("notlive") // Default to not live if check fails
+        handleInitialStartStreamSetup() // Proceed as if not live
       }
     } catch (error: any) {
       log(`Error checking user status: ${error.message}`)
       setUserStatus("notlive") // Default to not live if check fails
+      handleInitialStartStreamSetup() // Proceed as if not live
     } finally {
       setIsCheckingStatus(false)
     }
@@ -289,24 +350,6 @@ export default function StreamerPage() {
     const timestamp = new Date().toLocaleTimeString()
     const logMessage = `[${timestamp}] ${typeof message === "object" ? JSON.stringify(message) : message}`
     setLogs((prev) => [...prev, logMessage])
-  }
-
-  const handleAddTag = () => {
-    if (newTag.trim() && !tags.includes(newTag.trim()) && tags.length < 5) {
-      setTags([...tags, newTag.trim()])
-      setNewTag("")
-    }
-  }
-
-  const handleRemoveTag = (tagToRemove: string) => {
-    setTags(tags.filter((tag) => tag !== tagToRemove))
-  }
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault()
-      handleAddTag()
-    }
   }
 
   const sendToProxy = async (path: string, payload: any, method = "POST") => {
@@ -508,24 +551,22 @@ export default function StreamerPage() {
 
               // Create the payload that matches your endpoint structure
               const streamPayload = {
-                room_id: currentRoomId,
-                room_description: title || "Live Stream",
-                session_id: janusSessionIdRef.current,
-                UID: firebaseUid,
+                type: streamType, // "new" or "old"
+                session_id: janusSessionIdRef.current, // Current Janus session ID
                 username: username,
-                title: title || "Live Stream",
-                description: description || "",
+                title: title,
+                description: description,
                 chatEnabled: enableChat, // Include chatEnabled
+                room_id: currentRoomId, // Ensure room_id is also sent
               }
 
-              // Validate payload before sending - update validation to include new fields
+              // Validate payload before sending - UID is not in the payload, remove this check
               if (
                 !streamPayload.room_id ||
-                !streamPayload.UID ||
                 !streamPayload.username ||
                 !streamPayload.session_id ||
                 !streamPayload.title ||
-                streamPayload.chatEnabled === undefined // Validate chatEnabled
+                streamPayload.chatEnabled === undefined
               ) {
                 log(`Invalid payload - missing required fields: ${JSON.stringify(streamPayload)}`)
                 return
@@ -534,6 +575,10 @@ export default function StreamerPage() {
               sendToHandler(streamPayload)
                 .then(() => {
                   log("sendToHandler create_stream completed successfully")
+                  // Set hookId for URL sharing after successful stream creation/update
+                  if (streamType === "new") {
+                    setCurrentHookId(janusSessionIdRef.current)
+                  }
                 })
                 .catch((error) => {
                   log(`sendToHandler create_stream failed: ${error.message}`)
@@ -588,67 +633,6 @@ export default function StreamerPage() {
     }
     throw new Error("Streamer: Failed to attach VideoRoom plugin")
   }
-
-  /*
-const createRoom = async (description: string) => {
-    if (!videoRoomPluginHandleRef.current) throw new Error("Streamer: Plugin handle not available for creating room")
-
-    // Use user's UID as room ID
-    const userRoomId = firebaseUid
-    if (!userRoomId) throw new Error("Streamer: User UID not available for room creation")
-
-    const createMsg = {
-      janus: "message",
-      transaction: `createroom_${Date.now()}`,
-      body: {
-        request: "create",
-        room: userRoomId, // Use UID as room ID
-        description: description,
-        is_private: false,
-        record: true,
-        rec_dir: "/root/superfan_complete/recordings_raw",
-        bitrate: 1024000,
-      },
-    }
-
-    log(`Sending createRoom message with UID as room ID: ${JSON.stringify(createMsg)}`)
-    const response = await sendToProxy(`/${janusSessionIdRef.current}/${videoRoomPluginHandleRef.current}`, createMsg)
-
-    log(`Full createRoom response: ${JSON.stringify(response, null, 2)}`)
-
-    // Check multiple possible response structures
-    let roomId = null
-
-    if (response?.plugindata?.data?.videoroom === "created") {
-      roomId = response.plugindata.data.room
-      log(`Found room ID in plugindata.data.room: ${roomId}`)
-    } else if (response?.plugindata?.data?.room) {
-      roomId = response.plugindata.data.room
-      log(`Found room ID in plugindata.data.room (alternative): ${roomId}`)
-    } else if (response?.data?.room) {
-      roomId = response.data.room
-      log(`Found room ID in data.room: ${roomId}`)
-    } else if (response?.room) {
-      roomId = response.room
-      log(`Found room ID in root room: ${roomId}`)
-    }
-
-    if (roomId) {
-      const roomIdString = roomId.toString()
-      setCreatedRoomId(roomIdString) // Set state
-      createdRoomIdRef.current = roomIdString // Set ref immediately
-      log(`Streamer: Room created successfully with ID: ${roomIdString} (type: ${typeof roomId})`)
-      log(`createdRoomId state set to: ${roomIdString}`)
-      log(`createdRoomIdRef set to: ${roomIdString}`)
-      return roomId
-    } else {
-      const errorReason = response?.error?.reason || response?.plugindata?.data?.error || "Unknown error creating room"
-      log(`Failed to extract room ID from response. Error: ${errorReason}`)
-      log(`Response structure: ${JSON.stringify(response)}`)
-      throw new Error(`Streamer: Failed to create room: ${errorReason}`)
-    }
-  }
-*/
 
   const joinRoomAsPublisher = async (roomId: string) => {
     if (!videoRoomPluginHandleRef.current) throw new Error("Streamer: Plugin handle not available")
@@ -719,43 +703,98 @@ const createRoom = async (description: string) => {
     }
   }
 
-  const handleStartStreamFromModal = async () => {
-    // Check if user is already live
-    if (userStatus && userStatus !== "notlive") {
-      setShowAlreadyLiveAlert(true)
-      return
-    }
+  // Function to initiate the stream setup for a new stream (opens modal)
+  const handleInitialStartStreamSetup = () => {
+    // Reset modal states for a new stream
+    setModalTitle("")
+    setModalDescription("")
+    setModalTags([])
+    setModalEnableChat(true)
 
-    // Show device selection modal first
-    setShowDeviceSelectionModal(true)
-    setShowStreamDetailsModal(false)
+    setShowStreamDetailsModal(true)
   }
 
-  const handleContinueWithCurrentStream = () => {
+  // Function called when "Start Stream" is clicked inside StreamDetailsModal
+  const handleStreamDetailsConfirmed = async (details: {
+    title: string
+    description: string
+    tags: string[]
+    enableChat: boolean
+  }) => {
+    // Set the main component's states with the data from the modal
+    setTitle(details.title)
+    setDescription(details.description)
+    setTags(details.tags)
+    setEnableChat(details.enableChat)
+    setStreamType("new") // Mark as new stream
+    setCurrentHookId(null) // Will be set after Janus session is created
+
+    setShowStreamDetailsModal(false)
+    setShowDeviceSelectionModal(true) // Proceed to device selection
+  }
+
+  const handleContinueWithOldSession = async () => {
     setShowAlreadyLiveAlert(false)
-    // Show device selection modal to continue with current stream
+    setIsLoading(true) // Set loading state while re-establishing
+
+    // Set states based on existing stream details
+    setTitle(existingStreamTitle)
+    setDescription(existingStreamDescription)
+    setEnableChat(existingStreamChatEnabled)
+    setTags([]) // Assuming tags are not fetched for old streams, or reset if not applicable
+    setStreamType("old") // Mark as old stream
+    setCreatedRoomId(firebaseUid) // Room ID is always UID
+    createdRoomIdRef.current = firebaseUid
+    setCurrentHookId(existingHookId) // Hook ID is the existing Flask session ID
+
+    // Proceed to device selection, which will then call startStreaming
     setShowDeviceSelectionModal(true)
-    setShowStreamDetailsModal(false)
+    setIsLoading(false) // Stop loading here, startStreaming will handle its own loading
   }
 
-  const startStreaming = async () => {
+  // Modified startStreaming to accept device IDs as arguments
+  const startStreaming = async (initialVideoDeviceId: string | null, initialAudioDeviceId: string | null) => {
     if (!title.trim()) {
       alert("Please enter a stream title")
+      setIsLoading(false) // Ensure loading is false if validation fails
       return
     }
     if (!description.trim()) {
       alert("Please enter a stream description")
+      setIsLoading(false) // Ensure loading is false if validation fails
       return
     }
 
-    log(`Streamer: Starting stream: "${title}"`)
+    log(`Streamer: Starting stream: "${title}" (Type: ${streamType})`)
     setIsLoading(true)
 
-    try {
-      // Use selected devices or default constraints
-      const videoConstraints = selectedVideoDeviceId ? { deviceId: { exact: selectedVideoDeviceId } } : videoEnabled
+    log(
+      `Attempting to start stream with initialVideoDeviceId: ${initialVideoDeviceId}, initialAudioDeviceId: ${initialAudioDeviceId}`,
+    )
 
-      const audioConstraints = selectedAudioDeviceId ? { deviceId: { exact: selectedAudioDeviceId } } : micEnabled
+    try {
+      let videoConstraints: MediaStreamConstraints["video"] = false // Default to video off
+      if (videoEnabled) {
+        // Only apply video constraints if video is generally enabled
+        if (initialVideoDeviceId) {
+          videoConstraints = { deviceId: { exact: initialVideoDeviceId } }
+        } else {
+          videoConstraints = true // Fallback to default if no specific device selected but video is enabled
+        }
+      }
+
+      let audioConstraints: MediaStreamConstraints["audio"] = false
+      if (micEnabled) {
+        // Only apply audio constraints if mic is generally enabled
+        if (initialAudioDeviceId) {
+          audioConstraints = { deviceId: { exact: initialAudioDeviceId } }
+        } else {
+          audioConstraints = true // Fallback to default if no specific device selected but mic is enabled
+        }
+      }
+
+      log(`getUserMedia video constraints: ${JSON.stringify(videoConstraints)}`)
+      log(`getUserMedia audio constraints: ${JSON.stringify(audioConstraints)}`)
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints,
@@ -767,30 +806,28 @@ const createRoom = async (description: string) => {
       }
       log("Streamer: Local media obtained.")
 
-      await createJanusSession()
+      await createJanusSession() // Always create a new Janus session
       await attachVideoRoomPlugin()
-      // Remove this line:
-      // const newRoomId = await createRoom(title)
 
-      // Replace with:
-      const newRoomId = firebaseUid // Use UID directly as room ID
-      if (!newRoomId) {
+      const userRoomId = firebaseUid // Room ID is always UID
+      if (!userRoomId) {
         throw new Error("User UID not available")
       }
 
-      // Set the room ID immediately
-      setCreatedRoomId(newRoomId)
-      createdRoomIdRef.current = newRoomId
-      log(`Using user UID as room ID: ${newRoomId}`)
+      setCreatedRoomId(userRoomId)
+      createdRoomIdRef.current = userRoomId
+      log(`Using user UID as room ID: ${userRoomId}`)
 
-      log(`Room creation returned: ${newRoomId}`)
-      log(`createdRoomId state is now: ${createdRoomId}`)
+      await joinRoomAsPublisher(userRoomId)
 
-      await joinRoomAsPublisher(newRoomId)
+      // The sendToHandler call for create_stream is now handled in handleAsyncJanusEvent
+      // after the JSEP answer is received and stream is confirmed live.
+      // This ensures we have the janusSessionIdRef.current available.
     } catch (error: any) {
-      log(`Streamer: Error starting stream: ${error.message}`)
+      log(`Streamer: Error starting stream: ${error.name} - ${error.message}`)
       alert(`Error starting stream: ${error.message}`)
       stopStreamingCleanup()
+    } finally {
       setIsLoading(false)
     }
   }
@@ -884,11 +921,13 @@ const createRoom = async (description: string) => {
   }
 
   const handleCopyStreamUrl = () => {
-    if (createdRoomId) {
-      const streamUrl = `${window.location.origin}/viewer?roomId=${createdRoomId}`
+    if (createdRoomId && currentHookId) {
+      const streamUrl = `${window.location.origin}/viewer?roomId=${createdRoomId}&hookId=${currentHookId}`
       navigator.clipboard.writeText(streamUrl)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    } else {
+      alert("Stream URL not available yet. Start streaming first.")
     }
   }
 
@@ -910,8 +949,8 @@ const createRoom = async (description: string) => {
   }
 
   const getStreamUrl = () => {
-    if (createdRoomId) {
-      return `${window.location.origin}/viewer?roomId=${createdRoomId}`
+    if (createdRoomId && currentHookId) {
+      return `${window.location.origin}/viewer?roomId=${createdRoomId}&hookId=${currentHookId}`
     }
     return ""
   }
@@ -961,11 +1000,11 @@ const createRoom = async (description: string) => {
     return user?.displayName || user?.email?.split("@")[0] || "User"
   }
 
+  // Modified to pass device IDs to startStreaming
   const handleDevicesSelected = (videoDeviceId: string | null, audioDeviceId: string | null) => {
-    setSelectedVideoDeviceId(videoDeviceId)
-    setSelectedAudioDeviceId(audioDeviceId)
-    // Now start streaming with selected devices
-    startStreaming()
+    setSelectedVideoDeviceId(videoDeviceId) // Still update state for potential re-use or debugging
+    setSelectedAudioDeviceId(audioDeviceId) // Still update state for potential re-use or debugging
+    startStreaming(videoDeviceId, audioDeviceId) // Pass directly to startStreaming
   }
 
   const handleDevicePermissionDenied = () => {
@@ -983,26 +1022,27 @@ const createRoom = async (description: string) => {
         {showAlreadyLiveAlert && (
           <Alert className="mb-4 border-orange-300 bg-orange-50 dark:border-orange-800 dark:bg-orange-950">
             <AlertCircle className="h-4 w-4 text-orange-600" />
-            <AlertDescription className="text-orange-800 dark:text-orange-200">
-              <div className="flex items-center justify-between">
-                <span>You are already live - continue with current streaming</span>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setShowAlreadyLiveAlert(false)}
-                    className="border-orange-300 text-orange-700 hover:bg-orange-100"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleContinueWithCurrentStream}
-                    className="bg-orange-600 text-white hover:bg-orange-700"
-                  >
-                    OK
-                  </Button>
-                </div>
+            <AlertDescription className="flex flex-col sm:flex-row items-center justify-between gap-2 text-orange-800 dark:text-orange-200">
+              <span>You are already live. Continue with old session or create new?</span>
+              <div className="flex gap-2 mt-2 sm:mt-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleContinueWithOldSession}
+                  className="border-orange-300 text-orange-700 hover:bg-orange-100"
+                >
+                  Continue with Old
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setShowAlreadyLiveAlert(false)
+                    handleInitialStartStreamSetup() // This will reset modal states and open modal for new stream
+                  }}
+                  className="bg-orange-600 text-white hover:bg-orange-700"
+                >
+                  Create New
+                </Button>
               </div>
             </AlertDescription>
           </Alert>
@@ -1017,12 +1057,12 @@ const createRoom = async (description: string) => {
                 <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
                   <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
 
-                  {/* Start Streaming Button */}
-                  {!isStreaming && (
+                  {/* Start Streaming Button - Only shown if not streaming and not checking status */}
+                  {!isStreaming && !isCheckingStatus && !showAlreadyLiveAlert && (
                     <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                       <Button
-                        onClick={() => setShowStreamDetailsModal(true)}
-                        disabled={!firebaseUid || isLoading || isCheckingStatus}
+                        onClick={handleInitialStartStreamSetup} // Call the new initial click handler
+                        disabled={!firebaseUid || isLoading}
                         size="lg"
                         className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
                       >
@@ -1031,11 +1071,6 @@ const createRoom = async (description: string) => {
                             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
                             Starting Stream...
                           </>
-                        ) : isCheckingStatus ? (
-                          <>
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                            Checking Status...
-                          </>
                         ) : (
                           <>
                             <Play className="h-5 w-5 mr-2" />
@@ -1043,6 +1078,16 @@ const createRoom = async (description: string) => {
                           </>
                         )}
                       </Button>
+                    </div>
+                  )}
+
+                  {/* Loading/Checking Status Overlay */}
+                  {isCheckingStatus && !isStreaming && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
+                      <div className="text-center">
+                        <div className="w-10 h-10 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                        <p className="text-lg">Checking Stream Status...</p>
+                      </div>
                     </div>
                   )}
 
@@ -1187,20 +1232,11 @@ const createRoom = async (description: string) => {
       <StreamDetailsModal
         open={showStreamDetailsModal}
         onOpenChange={setShowStreamDetailsModal}
-        title={title}
-        setTitle={setTitle}
-        description={description}
-        setDescription={setDescription}
-        tags={tags}
-        setTags={setTags}
-        newTag={newTag}
-        setNewTag={setNewTag}
-        handleAddTag={handleAddTag}
-        handleRemoveTag={handleRemoveTag}
-        handleKeyPress={handleKeyPress}
-        enableChat={enableChat}
-        setEnableChat={setEnableChat}
-        onStartStream={handleStartStreamFromModal}
+        initialTitle={modalTitle}
+        initialDescription={modalDescription}
+        initialTags={modalTags}
+        initialEnableChat={modalEnableChat}
+        onConfirmDetails={handleStreamDetailsConfirmed} // New prop for confirming details
         isLoading={isLoading}
         firebaseUid={firebaseUid}
       />

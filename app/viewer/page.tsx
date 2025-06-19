@@ -503,7 +503,7 @@ export default function ViewerPage() {
       const subscribeMsg = {
         janus: "message",
         transaction: `subscribe_${publisherId}_${Date.now()}`,
-        body: { request: "join", ptype: "subscriber", room: Number.parseInt(roomId), feed: publisherId },
+        body: { request: "join", ptype: "subscriber", room: roomId, feed: publisherId },
       }
 
       const response = await sendToProxy(`/${janusSessionIdRef.current}/${feedHandleId}`, subscribeMsg)
