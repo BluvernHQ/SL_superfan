@@ -296,7 +296,7 @@ export default function HomePage() {
                       <Button
                         size="sm"
                         className="mt-2 w-full"
-                        onClick={() => window.open(`/viewer?roomId=${stream.roomId}`, "_blank")}
+                        onClick={() => window.open(`/viewer?roomId=${stream.UID}&hookId=${stream.hookId}`, "_blank")}
                       >
                         Watch Stream
                       </Button>
