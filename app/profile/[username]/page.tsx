@@ -5,12 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Play, Users, Eye } from "lucide-react"
+import { Settings } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, getIdToken } from "firebase/auth"
 import { useRouter } from "next/navigation"
-import { VideoPlayerModal } from "@/components/video-player-modal" // Import the new modal
+import { ProfileTabs } from "@/components/profile-tabs"
 
 interface UserProfileData {
   UID: string
@@ -22,6 +22,7 @@ interface UserProfileData {
   status: string
   blacklist: string[]
   created_at: string
+  bio?: string
 }
 
 export default function ProfilePage({ params }: { params: { username: string } }) {
@@ -34,28 +35,24 @@ export default function ProfilePage({ params }: { params: { username: string } }
   const [isLoadingRecordings, setIsLoadingRecordings] = useState(true)
   const router = useRouter()
   const [isFollowingAction, setIsFollowingAction] = useState(false)
-  const [profileData, setProfileData] = useState<UserProfileData | null>(null) // New state for user profile data
-  const [isLoadingProfile, setIsLoadingProfile] = useState(true) // New loading state for profile data
+  const [profileData, setProfileData] = useState<UserProfileData | null>(null)
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true)
   const [isBlocked, setIsBlocked] = useState(false)
   const [isBlockingAction, setIsBlockingAction] = useState(false)
+  const [isBlocking, setIsBlocking] = useState(false)
 
-  // State for video player modal
-  const [showVideoModal, setShowVideoModal] = useState(false)
-  const [currentVideoUrl, setCurrentVideoUrl] = useState("")
-  const [currentVideoTitle, setCurrentVideoTitle] = useState("")
+  // Removed state for in-page video player: currentPlayingVideo, setCurrentPlayingVideo
 
-  // Helper function to get auth headers
   const getAuthHeaders = async () => {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      Accept: "application/json", // Fixed: Removed the backslash here
+      Accept: "application/json",
     }
 
     if (auth.currentUser) {
       try {
         const authToken = await getIdToken(auth.currentUser)
         headers["Authorization"] = `Bearer ${authToken}`
-        console.log("Firebase auth token added to request headers")
       } catch (tokenError) {
         console.log(`Error getting Firebase token: ${tokenError}`)
       }
@@ -67,11 +64,10 @@ export default function ProfilePage({ params }: { params: { username: string } }
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user)
-      // Initial check for own profile based on display name
       if (user?.displayName === params.username) {
         setIsOwnProfile(true)
       } else {
-        setIsOwnProfile(false) // Ensure it's false if not own profile
+        setIsOwnProfile(false)
       }
     })
     return () => unsubscribe()
@@ -93,9 +89,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
       if (response.ok) {
         const data: UserProfileData = await response.json()
-        console.log("User details from /get_user:", data["user"])
         setProfileData(data["user"])
-        // Update isOwnProfile based on fetched UID and current user's UID (more reliable)
         if (currentUser && currentUser.uid === data.UID) {
           setIsOwnProfile(true)
         } else {
@@ -120,12 +114,10 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
   }, [params.username, currentUser])
 
-  // Modified useEffect for blocklist: only fetch if it's the current user's own profile
   useEffect(() => {
     if (currentUser && isOwnProfile) {
       fetchBlocklist()
     } else if (currentUser && !isOwnProfile) {
-      // If it's not the own profile, ensure blocklist is cleared
       setBlacklistedUsers([])
     }
   }, [currentUser, isOwnProfile, params.username])
@@ -146,17 +138,15 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
       if (response.ok) {
         const data = await response.json()
-        console.log("Raw past recordings data from /get_rec:", data) // Debug log
-
         if (Array.isArray(data.user)) {
           const transformedRecordings = data.user.map((rec: any) => ({
-            id: rec.hookId, // Use roomId as unique ID
-            title: rec.description || `Recording from ${rec.start ? rec.start.split("T")[0] : "Unknown Date"}`, // Use room_description if available, fallback to formatted date
+            id: rec.hookId,
+            title: rec.title || `Recording from ${rec.start ? rec.start.split("T")[0] : "Unknown Date"}`,
             views: rec.maxviews || 0,
-            date: formatDate(rec.start), // Format start time as date
+            date: formatDate(rec.start),
             thumbnail: `https://superfan.alterwork.in/files/thumbnails/${rec.hookId}.jpg`,
           }))
-          console.log("Transformed recordings for UI:", transformedRecordings) // Debug log
+          transformedRecordings.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
           setPastRecordings(transformedRecordings)
         } else {
           console.warn("Unexpected response format for /get_rec:", data)
@@ -180,10 +170,8 @@ export default function ProfilePage({ params }: { params: { username: string } }
     setIsLoadingBlocklist(true)
     try {
       const headers = await getAuthHeaders()
-
-      // Add timeout to prevent hanging requests
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
 
       const response = await fetch("https://superfan.alterwork.in/api/fetch_blocklist", {
         method: "POST",
@@ -200,9 +188,6 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
       if (response.ok) {
         const data = await response.json()
-        console.log("Blocklist data:", data)
-
-        // Handle the correct API response format: {'blocklist': [{'blocklist': 'username'}, ...]}
         if (data.blocklist && Array.isArray(data.blocklist)) {
           const usernames = data.blocklist.map((item: any) => item.blocklist || item)
           setBlacklistedUsers(usernames)
@@ -212,22 +197,86 @@ export default function ProfilePage({ params }: { params: { username: string } }
         }
       } else {
         console.error("Failed to fetch blocklist:", response.status, response.statusText)
-        // Don't show error to user, just use empty list
         setBlacklistedUsers([])
       }
     } catch (error: any) {
       console.error("Error fetching blocklist:", error)
-
       if (error.name === "AbortError") {
         console.log("Blocklist fetch request timed out")
       } else if (error.message === "Failed to fetch") {
         console.log("Network error fetching blocklist - using empty list")
       }
-
-      // Gracefully handle error by using empty list
       setBlacklistedUsers([])
     } finally {
       setIsLoadingBlocklist(false)
+    }
+  }
+
+  const handleBlockUser = async (username: string) => {
+    if (!currentUser) return
+
+    setIsBlockingAction(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/add_blocklist", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            blocklist_by: currentUser.displayName,
+            blocklist: username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        setIsBlocked(true)
+        setBlacklistedUsers((prev) => [...prev, username])
+        console.log(`Successfully blocked ${username}`)
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        console.error(`Failed to block user: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to block user: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      console.error(`Error blocking user: ${error.message}`)
+      alert(`Error blocking user: ${error.message}`)
+    } finally {
+      setIsBlockingAction(false)
+    }
+  }
+
+  const handleUnblockUser = async (username: string) => {
+    if (!currentUser) return
+
+    setIsBlockingAction(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/remove_blocklist", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            blocklist_by: currentUser.displayName,
+            blocklist: username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        setIsBlocked(false)
+        setBlacklistedUsers((prev) => prev.filter((u) => u !== username))
+        console.log(`Successfully unblocked ${username}`)
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        console.error(`Failed to unblock user: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to unblock user: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      console.error(`Error unblocking user: ${error.message}`)
+      alert(`Error unblocking user: ${error.message}`)
+    } finally {
+      setIsBlockingAction(false)
     }
   }
 
@@ -236,7 +285,6 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
     try {
       const headers = await getAuthHeaders()
-
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 10000)
 
@@ -275,7 +323,6 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
     try {
       const headers = await getAuthHeaders()
-
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 10000)
 
@@ -309,10 +356,11 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
   }
 
+  // handlePlayRecording is no longer needed as in-page player for individual videos is removed
+  // If needed for future modal, it would be re-added here.
   const handlePlayRecording = (recording: any) => {
-    setCurrentVideoUrl(`https://superfan.alterwork.in/files/videos/${recording.id}.webm`)
-    setCurrentVideoTitle(recording.title)
-    setShowVideoModal(true)
+    // This function is now a no-op or could trigger a modal if re-introduced
+    console.log("Playing recording (placeholder):", recording.title)
   }
 
   const formatNumber = (num: number) => {
@@ -326,7 +374,6 @@ export default function ProfilePage({ params }: { params: { username: string } }
     try {
       const date = new Date(dateString)
       if (isNaN(date.getTime())) {
-        // Check for invalid date
         console.warn("Invalid date string passed to formatDate:", dateString)
         return "Invalid Date"
       }
@@ -360,9 +407,6 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
       if (response.ok) {
         setIsFollowing(true)
-        // Optionally, update followers count if API returns it
-        console.log(`Successfully followed ${params.username}.`)
-        // Optimistically update followers count
         setProfileData((prev) => (prev ? { ...prev, followers: prev.followers + 1 } : null))
       } else {
         const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
@@ -400,9 +444,6 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
       if (response.ok) {
         setIsFollowing(false)
-        // Optionally, update followers count if API returns it
-        console.log(`Successfully unfollowed ${params.username}.`)
-        // Optimistically update followers count
         setProfileData((prev) => (prev ? { ...prev, followers: Math.max(0, prev.followers - 1) } : null))
       } else {
         const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
@@ -484,74 +525,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
   }, [params.username, currentUser, isOwnProfile])
 
-  const handleBlockUser = async () => {
-    if (!currentUser || isOwnProfile) return
-
-    setIsBlockingAction(true)
-    try {
-      const headers = await getAuthHeaders()
-      const response = await fetch("https://superfan.alterwork.in/api/add_blocklist", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            blocklist_by: currentUser.displayName,
-            blocklist: params.username,
-          },
-        }),
-      })
-
-      if (response.ok) {
-        setIsBlocked(true)
-        console.log(`Successfully blocked ${params.username}`)
-      } else {
-        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
-        console.error(`Failed to block user: ${response.status} - ${errorData.message || errorData.reason}`)
-        alert(`Failed to block user: ${errorData.message || "Please try again."}`)
-      }
-    } catch (error: any) {
-      console.error(`Error blocking user: ${error.message}`)
-      alert(`Error blocking user: ${error.message}`)
-    } finally {
-      setIsBlockingAction(false)
-    }
-  }
-
-  const handleUnblockUser = async () => {
-    if (!currentUser || isOwnProfile) return
-
-    setIsBlockingAction(true)
-    try {
-      const headers = await getAuthHeaders()
-      const response = await fetch("https://superfan.alterwork.in/api/remove_blocklist", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            blocklist_by: currentUser.displayName,
-            blocklist: params.username,
-          },
-        }),
-      })
-
-      if (response.ok) {
-        setIsBlocked(false)
-        console.log(`Successfully unblocked ${params.username}`)
-      } else {
-        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
-        console.error(`Failed to unblock user: ${response.status} - ${errorData.message || errorData.reason}`)
-        alert(`Failed to unblock user: ${errorData.message || "Please try again."}`)
-      }
-    } catch (error: any) {
-      console.error(`Error unblocking user: ${error.message}`)
-      alert(`Error unblocking user: ${error.message}`)
-    } finally {
-      setIsBlockingAction(false)
-    }
-  }
-
   useEffect(() => {
-    // Reset states when navigating to a different profile
     setProfileData(null)
     setIsLoadingProfile(true)
     setPastRecordings([])
@@ -561,201 +535,134 @@ export default function ProfilePage({ params }: { params: { username: string } }
     setIsFollowing(false)
     setIsBlocked(false)
     setIsOwnProfile(false)
+    // Removed setCurrentPlayingVideo(null)
   }, [params.username])
 
-  console.log("ProfilePage rendering. isLoadingRecordings:", isLoadingRecordings)
-  console.log("ProfilePage rendering. pastRecordings.length:", pastRecordings.length)
+  const handleEditProfile = () => {
+    alert("Edit Profile functionality coming soon!")
+  }
+
+  const handleEditPanels = () => {
+    alert("Edit Panels functionality coming soon!")
+  }
 
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
 
       <div className="container mx-auto px-4 py-6">
-        {/* Profile Header */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          {/* Profile Header */}
-          <Card className="lg:col-span-2">
-            <CardContent className="p-6">
-              {isLoadingProfile ? (
-                <div className="flex items-center gap-6 animate-pulse">
-                  <div className="w-24 h-24 rounded-full bg-muted"></div>
-                  <div className="flex-1 space-y-3">
-                    <div className="h-8 bg-muted rounded w-3/4"></div>
-                    <div className="flex gap-6">
-                      <div className="h-4 bg-muted rounded w-1/4"></div>
-                      <div className="h-4 bg-muted rounded w-1/4"></div>
-                    </div>
-                  </div>
-                </div>
-              ) : profileData ? (
-                <div className="flex items-center gap-6">
-                  <Avatar className="w-24 h-24">
-                    <AvatarImage
-                      src={`https://superfan.alterwork.in/files/profilepic/${profileData?.display_name || params.username}.png`}
-                      alt={profileData?.display_name || params.username}
-                      onError={(e) => {
-                        e.currentTarget.src = "/placeholder.svg?height=96&width=96"
-                      }}
-                    />
-                    <AvatarFallback className="text-2xl">
-                      {profileData?.display_name?.charAt(0)?.toUpperCase() || params.username.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h1 className="text-3xl font-bold">@{profileData?.display_name || params.username}</h1>
-                    </div>
-                    <div className="flex gap-6 text-sm">
-                      <span>
-                        <strong>{formatNumber(profileData?.followers || 0)}</strong> followers
-                      </span>
-                      <span>
-                        <strong>{formatNumber(profileData?.following || 0)}</strong> following
-                      </span>
-                      <span>
-                        <strong>{formatNumber(profileData?.sessions || 0)}</strong> sessions
-                      </span>
-                    </div>
-                  </div>
-                  {!isOwnProfile && currentUser && currentUser.displayName !== params.username && (
-                    <div className="flex gap-2">
-                      <Button
-                        variant={isFollowing ? "secondary" : "default"}
-                        onClick={isFollowing ? handleUnfollow : handleFollow}
-                        disabled={isFollowingAction || !currentUser}
-                        className={!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""}
-                      >
-                        {isFollowingAction
-                          ? isFollowing
-                            ? "Unfollowing..."
-                            : "Following..."
-                          : isFollowing
-                            ? "Following"
-                            : "Follow"}
-                      </Button>
-                      <Button
-                        variant={isBlocked ? "outline" : "destructive"}
-                        onClick={isBlocked ? handleUnblockUser : handleBlockUser}
-                        disabled={isBlockingAction || !currentUser}
-                      >
-                        {isBlockingAction
-                          ? isBlocked
-                            ? "Unblocking..."
-                            : "Blocking..."
-                          : isBlocked
-                            ? "Unblock"
-                            : "Block"}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center text-muted-foreground py-8">
-                  <p>User profile not found.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Current Live Stream (Placeholder - will need API integration) */}
-          {profileData?.status === "live" && (
-            <Card className="lg:col-span-1">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Badge variant="destructive" className="animate-pulse">
-                    <div className="w-2 h-2 bg-white rounded-full mr-1"></div>
-                    LIVE NOW
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="font-semibold text-base mb-2 line-clamp-2">{profileData.display_name}'s Stream</h3>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4">
-                      <Users className="w-4 h-4" />
-                      {/* Assuming currentStream details would come from a separate API call or be part of profileData */}
-                      {formatNumber(0)} watching {/* Placeholder for live viewers */}
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    className="w-full bg-red-600 hover:bg-red-700"
-                    onClick={() => window.open(`/viewer?roomId=${profileData.UID}`, "_blank")} // Assuming UID can be used as roomId for live stream
-                  >
-                    <Play className="w-4 h-4 mr-2" />
-                    Watch Live
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+        {/* Channel Header */}
+        <div className="relative w-full h-48 md:h-64 rounded-lg mb-6 overflow-hidden">
+          {/* Blurred profile picture as banner image */}
+          <img
+            src={`https://superfan.alterwork.in/files/profilepic/${profileData?.display_name || params.username}.png`}
+            alt="Channel Banner"
+            className="w-full h-full object-cover blur-lg scale-110" // Apply blur and slight scale for effect
+            onError={(e) => {
+              e.currentTarget.src = "/placeholder.svg?height=256&width=1200"
+            }}
+          />
+          <div className="absolute inset-0 bg-black bg-opacity-30"></div> {/* Overlay for better contrast */}
+          {isOwnProfile && (
+            <Button variant="secondary" size="sm" className="absolute top-4 right-4" onClick={handleEditProfile}>
+              <Settings className="h-4 w-4 mr-2" />
+              Edit Channel
+            </Button>
           )}
         </div>
 
-        {/* Past Recordings Section */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Past Recordings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {isLoadingRecordings ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <Card key={index} className="animate-pulse max-w-sm">
-                    <CardContent className="p-4">
-                      <div className="w-full h-40 bg-muted rounded mb-3"></div>
-                      <div className="h-4 bg-muted rounded mb-2 w-3/4"></div>
-                      <div className="flex items-center justify-between text-sm text-muted-foreground">
-                        <div className="h-3 bg-muted rounded w-1/4"></div>
-                        <div className="h-3 bg-muted rounded w-1/4"></div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-6 mb-6 -mt-16 px-4">
+          <Avatar className="w-32 h-32 border-4 border-background shadow-md">
+            <AvatarImage
+              src={`https://superfan.alterwork.in/files/profilepic/${profileData?.display_name || params.username}.png`}
+              alt={profileData?.display_name || params.username}
+              onError={(e) => {
+                e.currentTarget.src = "/placeholder.svg?height=128&width=128"
+              }}
+            />
+            <AvatarFallback className="text-4xl">
+              {profileData?.display_name?.charAt(0)?.toUpperCase() || params.username.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 flex flex-col md:flex-row md:items-center md:justify-between gap-4 w-full">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <h1 className="text-3xl font-bold">@{profileData?.display_name || params.username}</h1>
+                {profileData?.status === "live" && (
+                  <Badge variant="destructive" className="animate-pulse">
+                    <div className="w-2 h-2 bg-white rounded-full mr-1"></div>
+                    LIVE
+                  </Badge>
+                )}
               </div>
-            ) : pastRecordings.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {pastRecordings.map((recording) => {
-                  console.log("Attempting to render recording:", recording.id, recording.title) // Debug log inside map
-                  return (
-                    <Card
-                      key={recording.id}
-                      className="cursor-pointer hover:shadow-lg transition-shadow max-w-sm"
-                      onClick={() => handlePlayRecording(recording)} // Add onClick handler
-                    >
-                      <CardContent className="p-4">
-                        <div className="w-full h-40 bg-black rounded mb-3 flex items-center justify-center overflow-hidden">
-                          <img
-                            src={recording.thumbnail || "/placeholder.svg?height=160&width=256&query=video-thumbnail"}
-                            alt={recording.title}
-                            className="w-full h-full object-cover"
-                            onError={(e) => {
-                              e.currentTarget.src = "/placeholder.svg?height=160&width=256"
-                            }}
-                          />
-                        </div>
-                        <h4 className="font-semibold mb-2 line-clamp-2">{recording.title}</h4>
-                        <div className="flex items-center justify-between text-sm text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Eye className="w-3 h-3" />
-                            {formatNumber(recording.views)}
-                          </span>
-                          <span>{recording.date}</span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )
-                })}
+              <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
+                <span>
+                  <strong>{formatNumber(profileData?.followers || 0)}</strong> followers
+                </span>
+                <span>
+                  <strong>{formatNumber(profileData?.following || 0)}</strong> following
+                </span>
+                <span>
+                  <strong>{formatNumber(profileData?.sessions || 0)}</strong> Live sessions
+                </span>
               </div>
-            ) : (
-              <p className="text-muted-foreground text-center py-8">No past recordings found for this user.</p>
+            </div>
+            {!isOwnProfile && currentUser && currentUser.displayName !== params.username && (
+              <div className="flex gap-2 mt-4 md:mt-0">
+                <Button
+                  variant={isFollowing ? "secondary" : "default"}
+                  onClick={isFollowing ? handleUnfollow : handleFollow}
+                  disabled={isFollowingAction || !currentUser}
+                  className={!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""}
+                >
+                  {isFollowingAction
+                    ? isFollowing
+                      ? "Unfollowing..."
+                      : "Following..."
+                    : isFollowing
+                      ? "Following"
+                      : "Follow"}
+                </Button>
+                <Button
+                  variant={isBlocked ? "outline" : "destructive"}
+                  onClick={() => (isBlocked ? handleUnblockUser(params.username) : handleBlockUser(params.username))}
+                  disabled={isBlockingAction || !currentUser}
+                >
+                  {isBlockingAction ? (isBlocked ? "Unblocking..." : "Blocking...") : isBlocked ? "Unblock" : "Block"}
+                </Button>
+              </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+
+        {/* Profile Tabs */}
+        {isLoadingProfile ? (
+          <div className="animate-pulse space-y-6">
+            <div className="h-10 bg-muted rounded w-full max-w-md mx-auto"></div>
+            <div className="h-64 bg-muted rounded w-full"></div>
+            <div className="h-48 bg-muted rounded w-full"></div>
+          </div>
+        ) : profileData ? (
+          <ProfileTabs
+            username={params.username}
+            isOwnProfile={isOwnProfile}
+            pastRecordings={pastRecordings}
+            isLoadingRecordings={isLoadingRecordings}
+            onPlayRecording={handlePlayRecording} // Pass the updated handler (now a no-op)
+            profileData={profileData}
+            onEditProfile={handleEditProfile}
+            onEditPanels={handleEditPanels}
+            // Removed currentPlayingVideo and setCurrentPlayingVideo props
+          />
+        ) : (
+          <div className="text-center text-muted-foreground py-8">
+            <p>User profile not found.</p>
+          </div>
+        )}
 
         {/* Blacklisted Users (For any logged-in user) */}
         {currentUser && isOwnProfile && (
-          <Card>
+          <Card className="mt-6">
             <CardHeader>
               <CardTitle>Blacklisted Users</CardTitle>
             </CardHeader>
@@ -787,14 +694,6 @@ export default function ProfilePage({ params }: { params: { username: string } }
           </Card>
         )}
       </div>
-
-      {/* Video Player Modal */}
-      <VideoPlayerModal
-        open={showVideoModal}
-        onOpenChange={setShowVideoModal}
-        videoUrl={currentVideoUrl}
-        videoTitle={currentVideoTitle}
-      />
     </div>
   )
 }

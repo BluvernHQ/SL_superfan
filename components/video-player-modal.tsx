@@ -4,8 +4,8 @@ import type React from "react"
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { X, AlertCircle } from "lucide-react" // Import AlertCircle icon
-import { useEffect, useRef, useState } from "react" // Import useState
+import { X, AlertCircle } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
 
 interface VideoPlayerModalProps {
   open: boolean
@@ -16,16 +16,15 @@ interface VideoPlayerModalProps {
 
 export function VideoPlayerModal({ open, onOpenChange, videoUrl, videoTitle }: VideoPlayerModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
-  const [hasVideoError, setHasVideoError] = useState(false) // New state for video error
+  const [hasVideoError, setHasVideoError] = useState(false)
 
   // Pause video and reset error state when modal closes
   useEffect(() => {
     if (!open && videoRef.current) {
       videoRef.current.pause()
-      videoRef.current.currentTime = 0 // Reset video to start
-      setHasVideoError(false) // Reset error state
+      videoRef.current.currentTime = 0
+      setHasVideoError(false)
     } else if (open) {
-      // When modal opens, reset error state in case it was previously set
       setHasVideoError(false)
     }
   }, [open])
@@ -50,8 +49,9 @@ export function VideoPlayerModal({ open, onOpenChange, videoUrl, videoTitle }: V
               autoPlay
               playsInline
               className="w-full h-full object-contain"
-              onError={handleVideoError} // Attach the error handler
+              onError={handleVideoError}
             >
+              <source src={videoUrl} type="video/mp4" />
               Your browser does not support the video tag.
             </video>
           ) : (
@@ -62,7 +62,7 @@ export function VideoPlayerModal({ open, onOpenChange, videoUrl, videoTitle }: V
                 The video could not be loaded, either due to a format issue or a problem with the server.
               </p>
               <p className="text-xs mt-2">
-                Please ensure the video file (`.webm`) is correctly encoded and accessible from the server.
+                Please ensure the video file (.mp4) is correctly encoded and accessible from the server.
               </p>
             </div>
           )}

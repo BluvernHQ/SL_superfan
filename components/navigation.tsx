@@ -3,16 +3,18 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Play, User, LogOut, ChevronDown, Camera } from "lucide-react"
+import { Play, User, LogOut, ChevronDown, Camera } from 'lucide-react'
 import Link from "next/link"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, signOut } from "firebase/auth"
 import { useRouter } from "next/navigation"
 import { UserSearch } from "./user-search"
+// import { GoLiveOptionsModal } from "./go-live-options-modal" // Removed import
 
 export function Navigation() {
   const [user, setUser] = useState<any>(null)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  // const [showGoLiveOptionsModal, setShowGoLiveOptionsModal] = useState(false) // Removed state
   const router = useRouter()
 
   useEffect(() => {
@@ -50,7 +52,6 @@ export function Navigation() {
     }
   }
 
-  // Update getUserDisplayName function to only return username
   const getUserDisplayName = () => {
     if (user?.displayName) return user.displayName
     if (user?.email) return user.email.split("@")[0]
@@ -67,7 +68,7 @@ export function Navigation() {
     router.push(path)
   }
 
-  const handleStartLive = () => {
+  const handleStartLive = () => { // Renamed from handleGoLive
     if (user) {
       router.push("/streamer")
     } else {
@@ -75,11 +76,16 @@ export function Navigation() {
     }
   }
 
+  // const handleUploadVideo = () => { // Removed function
+  //   console.log("Upload Video clicked!")
+  //   alert("Video upload functionality coming soon!")
+  // }
+
   return (
     <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
       <div className="container mx-auto px-4">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
+          {/* Logo - Top Left */}
           <Link href="/" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-r from-orange-600 to-orange-500 rounded-lg flex items-center justify-center">
               <Play className="w-5 h-5 text-white" />
@@ -89,20 +95,20 @@ export function Navigation() {
             </span>
           </Link>
 
-          {/* Search Bar - replaces Home link */}
+          {/* Search Bar - Centered and takes available space */}
           <div className="hidden md:flex items-center flex-1 max-w-md mx-8">
             <UserSearch />
           </div>
 
-          {/* User Menu and Start Stream Button */}
+          {/* User Menu and Create Button - Aligned to the right */}
           <div className="flex items-center space-x-4">
             <Button
               size="sm"
-              onClick={handleStartLive}
+              onClick={handleStartLive} // Directly call handleStartLive
               className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
             >
               <Camera className="mr-2 h-4 w-4" />
-              Start Stream
+              Start Stream {/* Changed text from 'Create' to 'Start Stream' */}
             </Button>
 
             {user ? (
@@ -167,6 +173,7 @@ export function Navigation() {
           </div>
         </div>
       </div>
+      {/* Removed GoLiveOptionsModal */}
     </nav>
   )
 }

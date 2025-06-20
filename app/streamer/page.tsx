@@ -634,6 +634,36 @@ export default function StreamerPage() {
     throw new Error("Streamer: Failed to attach VideoRoom plugin")
   }
 
+  // NEW: Function to create/configure the permanent Janus room
+  const createPermanentJanusRoom = async (roomId: string) => {
+    if (!videoRoomPluginHandleRef.current) throw new Error("Streamer: Plugin handle not available for room creation")
+
+    log(`Attempting to create/configure permanent room: ${roomId}`)
+    const createRoomMsg = {
+      janus: "message",
+      transaction: `create_room_${Date.now()}`,
+      body: {
+        request: "create",
+        room: roomId,
+        permanent: true,
+        description: "A permanent test room for alphanumeric IDs",
+        publishers: 1,
+        record: true,
+        rec_dir: "/root/superfan_complete/recordings_raw",
+        bitrate: 5,000,000,
+      },
+    }
+    const response = await sendToProxy(
+      `/${janusSessionIdRef.current}/${videoRoomPluginHandleRef.current}`,
+      createRoomMsg,
+    )
+    if (response && (response.janus === "ack" || response.janus === "success")) {
+      log(`Streamer: Permanent room ${roomId} creation/configuration request sent.`)
+    } else {
+      throw new Error(`Streamer: Failed to create/configure permanent room: ${response?.error?.reason}`)
+    }
+  }
+
   const joinRoomAsPublisher = async (roomId: string) => {
     if (!videoRoomPluginHandleRef.current) throw new Error("Streamer: Plugin handle not available")
     const joinMsg = {
@@ -818,6 +848,9 @@ export default function StreamerPage() {
       createdRoomIdRef.current = userRoomId
       log(`Using user UID as room ID: ${userRoomId}`)
 
+      // NEW: Create/configure the permanent Janus room before joining
+      await createPermanentJanusRoom(userRoomId)
+
       await joinRoomAsPublisher(userRoomId)
 
       // The sendToHandler call for create_stream is now handled in handleAsyncJanusEvent
@@ -851,18 +884,8 @@ export default function StreamerPage() {
     const cleanupPromises = []
 
     if (videoRoomPluginHandleRef.current && janusSessionIdRef.current) {
-      if (createdRoomId) {
-        const destroyMsg = {
-          janus: "message",
-          transaction: `destroy_${Date.now()}`,
-          body: { request: "destroy", room: createdRoomId, permanent: false },
-        }
-        cleanupPromises.push(
-          sendToProxy(`/${janusSessionIdRef.current}/${videoRoomPluginHandleRef.current}`, destroyMsg).catch((err) =>
-            log(`Streamer: Error destroying room: ${err.message}`),
-          ),
-        )
-      }
+      // Removed the "destroy room" request as per user's instruction.
+      // The room associated with the user's UID is now permanent.
 
       cleanupPromises.push(
         sendToProxy(`/${janusSessionIdRef.current}/${videoRoomPluginHandleRef.current}`, {
