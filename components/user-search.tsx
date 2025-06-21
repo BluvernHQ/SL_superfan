@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Search, User } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Input } from "@/components/ui/input"
@@ -8,6 +9,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { auth } from "@/lib/firebase" // Import Firebase auth
 
 interface UserData {
   id: string
@@ -20,33 +22,123 @@ interface UserData {
 }
 
 interface UserSearchProps {
-  users: UserData[]
-  isLoading: boolean
+  // These props are optional, allowing the component to fetch data if not provided
+  users?: UserData[]
+  isLoading?: boolean
 }
 
-export function UserSearch({ users, isLoading }: UserSearchProps) {
-  const [query, setQuery] = React.useState("")
-  const [isFocused, setIsFocused] = React.useState(false)
+export function UserSearch({ users: propUsers, isLoading: propIsLoading }: UserSearchProps) {
+  const [query, setQuery] = useState("")
+  const [isFocused, setIsFocused] = useState(false)
   const router = useRouter()
-  const searchRef = React.useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLDivElement>(null)
+
+  // Internal state for users and loading, used if props are not provided
+  const [internalUsers, setInternalUsers] = useState<UserData[]>([])
+  const [internalIsLoading, setInternalIsLoading] = useState(false)
+  const [currentUser, setCurrentUser] = useState<any>(null)
+
+  // Determine which user list and loading state to use
+  const currentUsers = propUsers || internalUsers
+  const currentIsLoading = propIsLoading || internalIsLoading
+
+  // Authenticated user for fetching token
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      setCurrentUser(user)
+    })
+    return () => unsubscribe()
+  }, [])
+
+  // Helper function to get auth headers
+  const getAuthHeaders = useCallback(async () => {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    }
+
+    if (currentUser) {
+      try {
+        const token = await currentUser.getIdToken()
+        headers["Authorization"] = `Bearer ${token}`
+      } catch (tokenError) {
+        console.error("Error getting auth token:", tokenError)
+      }
+    }
+    return headers
+  }, [currentUser])
+
+  // Fetch users internally if not provided via props
+  useEffect(() => {
+    if (propUsers === undefined) {
+      const fetchUsers = async () => {
+        setInternalIsLoading(true)
+        try {
+          const headers = await getAuthHeaders()
+          const response = await fetch("https://superfan.alterwork.in/api/fetch_users", {
+            method: "GET",
+            headers,
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            let usersArray = []
+
+            if (Array.isArray(data)) {
+              usersArray = data
+            } else if (data.users && Array.isArray(data.users)) {
+              usersArray = data.users
+            } else if (data.data && Array.isArray(data.data)) {
+              usersArray = data.data
+            } else {
+              console.error("Unexpected API response structure:", data)
+              setInternalUsers([])
+              return
+            }
+
+            // Filter out the current user
+            const filteredUsers = usersArray.filter((userData: any) => {
+              if (!currentUser) return true
+              const currentUserDisplayName = currentUser.displayName
+              const currentUserUID = currentUser.uid
+              return userData.username !== currentUserDisplayName && userData.id !== currentUserUID
+            })
+
+            const transformedUsers = filteredUsers.map((userData: any) => ({
+              id: userData.UID || userData.username,
+              username: userData.display_name || userData.username,
+              display_name: userData.display_name,
+              isLive: userData.status !== "notlive",
+              totalSessions: userData.sessions || 0,
+              followers: userData.followers || 0,
+              isFollowing: false,
+            }))
+            setInternalUsers(transformedUsers)
+          } else {
+            console.error("Failed to fetch users:", response.status, response.statusText)
+            setInternalUsers([])
+          }
+        } catch (error) {
+          console.error("Error fetching users:", error)
+          setInternalUsers([])
+        } finally {
+          setInternalIsLoading(false)
+        }
+      }
+      fetchUsers()
+    }
+  }, [propUsers, getAuthHeaders, currentUser]) // Re-fetch if propUsers becomes defined or auth changes
 
   const filteredUsers = React.useMemo(() => {
     if (!query) {
       return []
     }
     const lowerCaseQuery = query.toLowerCase()
-    return users.filter(
+    return currentUsers.filter(
       (user) =>
         user.username.toLowerCase().includes(lowerCaseQuery) ||
         user.display_name.toLowerCase().includes(lowerCaseQuery),
     )
-  }, [users, query])
-
-  const formatNumber = (num: number) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + "M"
-    if (num >= 1000) return (num / 1000).toFixed(1) + "K"
-    return num.toString()
-  }
+  }, [currentUsers, query])
 
   const handleUserClick = (username: string) => {
     setQuery("") // Clear search query on click
@@ -85,7 +177,7 @@ export function UserSearch({ users, isLoading }: UserSearchProps) {
   }
 
   // Close results when clicking outside
-  React.useEffect(() => {
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
         setIsFocused(false)
@@ -112,7 +204,7 @@ export function UserSearch({ users, isLoading }: UserSearchProps) {
 
       {isFocused && query.trim().length > 0 && (
         <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-80 overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
-          {isLoading ? (
+          {currentIsLoading ? (
             <div className="p-2 space-y-2">
               {Array.from({ length: 3 }).map((_, index) => (
                 <Skeleton key={index} className="h-16 w-full rounded-md" />
