@@ -355,13 +355,13 @@ export default function LoginPage() {
   const getUsernameStatusIcon = () => {
     switch (usernameStatus) {
       case "checking":
-        return <div className="w-4 h-4 border-2 border-orange-600 border-t-transparent rounded-full animate-spin" />
+        return <div className="h-4 w-4 animate-spin rounded-full border-2 border-orange-600 border-t-transparent" />
       case "available":
-        return <Check className="w-4 h-4 text-green-600" />
+        return <Check className="h-4 w-4 text-green-600" />
       case "taken":
-        return <X className="w-4 h-4 text-red-600" />
+        return <X className="h-4 w-4 text-red-600" />
       case "error":
-        return <AlertCircle className="w-4 h-4 text-yellow-600" />
+        return <AlertCircle className="h-4 w-4 text-yellow-600" />
       default:
         return null
     }
@@ -409,30 +409,28 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-orange-100 to-amber-50 dark:from-orange-950/20 dark:via-orange-900/10 dark:to-amber-950/20 flex items-center justify-center p-4">
+    <div className="flex min-h-screen items-center justify-center bg-[#161616] p-4">
       <div className="w-full max-w-md">
         {/* Logo/Brand Section */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-orange-600 to-orange-500 rounded-full mb-6 shadow-lg">
-            <Play className="w-10 h-10 text-white" />
+        <div className="mb-8 text-center">
+          <div className="mb-6 inline-flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-r from-orange-600 to-orange-500 shadow-lg">
+            <Play className="h-10 w-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-orange-500 bg-clip-text text-transparent mb-2">
+          <h1 className="mb-2 bg-gradient-to-r from-orange-600 to-orange-500 bg-clip-text text-3xl font-bold text-transparent">
             Superfan
           </h1>
-          <p className="text-muted-foreground text-lg">Welcome to your streaming platform</p>
-          <p className="text-sm text-muted-foreground mt-2">Connect, create, and share your passion with the world</p>
+          <p className="text-lg text-muted-foreground">Welcome to your streaming platform</p>
+          <p className="mt-2 text-sm text-muted-foreground">Connect, create, and share your passion with the world</p>
         </div>
 
         {/* Main Card */}
-        <Card className="shadow-xl backdrop-blur-sm bg-white/95 dark:bg-card/95">
+        <Card className="shadow-xl backdrop-blur-sm bg-[#252731]">
           <CardHeader className="space-y-1 pb-4">
-            <CardTitle className="text-2xl text-center">Welcome Back</CardTitle>
+            <CardTitle className="text-center text-2xl">Welcome Back</CardTitle>
             <CardDescription className="text-center">
               Sign in to your account or create a new one to get started
               {(redirectPath === "stream" || openStreamModal === "true") && (
-                <span className="block mt-2 text-orange-600 dark:text-orange-400 font-medium">
-                  Sign in to start streaming
-                </span>
+                <span className="mt-2 block font-medium text-orange-500">Sign in to start streaming</span>
               )}
             </CardDescription>
           </CardHeader>
@@ -447,17 +445,11 @@ export default function LoginPage() {
           )}
 
           <Tabs defaultValue="login" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-6">
-              <TabsTrigger
-                value="login"
-                className="data-[state=active]:bg-orange-100 dark:data-[state=active]:bg-orange-900"
-              >
+            <TabsList className="mb-6 grid w-full grid-cols-2">
+              <TabsTrigger value="login" className="data-[state=active]:bg-orange-900">
                 Sign In
               </TabsTrigger>
-              <TabsTrigger
-                value="register"
-                className="data-[state=active]:bg-orange-100 dark:data-[state=active]:bg-orange-900"
-              >
+              <TabsTrigger value="register" className="data-[state=active]:bg-orange-900">
                 Sign Up
               </TabsTrigger>
             </TabsList>
@@ -471,7 +463,7 @@ export default function LoginPage() {
                       Email Address
                     </Label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="email"
                         name="email"
@@ -479,7 +471,7 @@ export default function LoginPage() {
                         placeholder="Enter your email"
                         value={formData.email}
                         onChange={handleInputChange}
-                        className="pl-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
+                        className="pl-10 pr-10 border-[#1f2128] focus:border-orange-500"
                         required
                       />
                     </div>
@@ -490,7 +482,7 @@ export default function LoginPage() {
                       Password
                     </Label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="password"
                         name="password"
@@ -498,7 +490,7 @@ export default function LoginPage() {
                         placeholder="Enter your password"
                         value={formData.password}
                         onChange={handleInputChange}
-                        className="pl-10 pr-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
+                        className="pl-10 pr-10 border-[#1f2128] focus:border-orange-500"
                         required
                       />
                       <Button
@@ -519,16 +511,13 @@ export default function LoginPage() {
                         id="remember"
                         checked={rememberMe}
                         onCheckedChange={(checked) => setRememberMe(checked as boolean)}
-                        className="border-orange-300 data-[state=checked]:bg-orange-600"
+                        className="border-orange-500 data-[state=checked]:bg-orange-500"
                       />
                       <Label htmlFor="remember" className="text-sm">
                         Remember me
                       </Label>
                     </div>
-                    <Link
-                      href="/forgot-password"
-                      className="text-sm text-orange-600 hover:text-orange-700 hover:underline"
-                    >
+                    <Link href="/forgot-password" className="text-sm text-orange-500 hover:underline">
                       Forgot password?
                     </Link>
                   </div>
@@ -537,12 +526,12 @@ export default function LoginPage() {
                 <CardFooter className="flex flex-col space-y-4">
                   <Button
                     type="submit"
-                    className="w-full bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white font-medium py-2.5"
+                    className="w-full bg-gradient-to-r from-orange-600 to-orange-500 py-2.5 font-medium text-white hover:from-orange-700 hover:to-orange-600"
                     disabled={isLoading}
                   >
                     {isLoading ? (
                       <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                         Signing in...
                       </>
                     ) : (
@@ -562,7 +551,7 @@ export default function LoginPage() {
                       Username <span className="text-red-500">*</span>
                     </Label>
                     <div className="relative">
-                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                      <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="username"
                         name="username"
@@ -570,7 +559,7 @@ export default function LoginPage() {
                         placeholder="Choose a unique username"
                         value={formData.username}
                         onChange={handleInputChange}
-                        className="pl-10 pr-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
+                        className="pl-10 pr-10 border-[#1f2128] focus:border-orange-500"
                         required
                         minLength={3}
                         maxLength={20}
@@ -578,7 +567,7 @@ export default function LoginPage() {
                         title="Username can only contain letters, numbers, and underscores"
                         disabled={isLoading}
                       />
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2 transform">
                         {getUsernameStatusIcon()}
                       </div>
                     </div>
@@ -590,7 +579,7 @@ export default function LoginPage() {
                       Email Address
                     </Label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                      <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="reg-email"
                         name="email"
@@ -598,7 +587,7 @@ export default function LoginPage() {
                         placeholder="Enter your email"
                         value={formData.email}
                         onChange={handleInputChange}
-                        className="pl-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
+                        className="pl-10 border-[#1f2128] focus:border-orange-500"
                         required
                         disabled={isLoading}
                       />
@@ -610,7 +599,7 @@ export default function LoginPage() {
                       Password
                     </Label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="reg-password"
                         name="password"
@@ -618,7 +607,7 @@ export default function LoginPage() {
                         placeholder="Create a password"
                         value={formData.password}
                         onChange={handleInputChange}
-                        className="pl-10 pr-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
+                        className="pl-10 pr-10 border-[#1f2128] focus:border-orange-500"
                         required
                         minLength={6}
                         disabled={isLoading}
@@ -641,7 +630,7 @@ export default function LoginPage() {
                       Confirm Password
                     </Label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+                      <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="confirm-password"
                         name="confirmPassword"
@@ -649,7 +638,7 @@ export default function LoginPage() {
                         placeholder="Confirm your password"
                         value={formData.confirmPassword}
                         onChange={handleInputChange}
-                        className="pl-10 pr-10 border-orange-200 dark:border-orange-800 focus:border-orange-500 dark:focus:border-orange-500"
+                        className="pl-10 pr-10 border-[#1f2128] focus:border-orange-500"
                         required
                         disabled={isLoading}
                       />
@@ -669,17 +658,17 @@ export default function LoginPage() {
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="terms"
-                      className="border-orange-300 data-[state=checked]:bg-orange-600"
+                      className="border-orange-500 data-[state=checked]:bg-orange-500"
                       required
                       disabled={isLoading}
                     />
                     <Label htmlFor="terms" className="text-sm">
                       I agree to the{" "}
-                      <Link href="/terms" className="text-orange-600 hover:text-orange-700 hover:underline">
+                      <Link href="/terms" className="text-orange-500 hover:underline">
                         Terms of Service
                       </Link>{" "}
                       and{" "}
-                      <Link href="/privacy" className="text-orange-600 hover:text-orange-700 hover:underline">
+                      <Link href="/privacy" className="text-orange-500 hover:underline">
                         Privacy Policy
                       </Link>
                     </Label>
@@ -689,12 +678,12 @@ export default function LoginPage() {
                 <CardFooter>
                   <Button
                     type="submit"
-                    className="w-full bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 text-white font-medium py-2.5"
+                    className="w-full bg-gradient-to-r from-orange-600 to-orange-500 py-2.5 font-medium text-white hover:from-orange-700 hover:to-orange-600"
                     disabled={isLoading || usernameStatus !== "available"}
                   >
                     {isLoading ? (
                       <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                         {getSignupButtonText()}
                       </>
                     ) : (

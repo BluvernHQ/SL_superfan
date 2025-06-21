@@ -1,10 +1,11 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Users, Camera } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { auth } from "@/lib/firebase"
@@ -12,16 +13,43 @@ import { onAuthStateChanged } from "firebase/auth"
 import { useRouter } from "next/navigation"
 import { VideoCarousel } from "@/components/video-carousel"
 import { UserCarousel } from "@/components/user-carousel"
+import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar"
+import { AppSidebar } from "@/components/app-sidebar"
+
+/* Helper: show "Discover Users" only when the sidebar is not visible (mobile) */
+function DiscoverUsersSection({
+  users,
+  isLoading,
+  currentLoggedInUser,
+}: {
+  users: any[]
+  isLoading: boolean
+  currentLoggedInUser?: string
+}) {
+  const { isMobile } = useSidebar()
+  if (!isMobile) return null
+
+  return (
+    <UserCarousel
+      title="Discover Users"
+      users={users}
+      isLoading={isLoading}
+      currentLoggedInUser={currentLoggedInUser}
+    />
+  )
+}
 
 export default function HomePage() {
   const [liveStreams, setLiveStreams] = useState<any[]>([])
   const [allUsers, setAllUsers] = useState<any[]>([])
   const [isLoadingStreams, setIsLoadingStreams] = useState(true)
+  const [hasLoadedStreamsInitially, setHasLoadedStreamsInitially] = useState(false)
   const [user, setUser] = useState<any>(null)
   const router = useRouter()
 
   const [pastRecordings, setPastRecordings] = useState<any[]>([])
   const [isLoadingRecordings, setIsLoadingRecordings] = useState(true)
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true)
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -80,10 +108,14 @@ export default function HomePage() {
       console.error("Error fetching live streams:", error)
     } finally {
       setIsLoadingStreams(false)
+      if (!hasLoadedStreamsInitially) {
+        setHasLoadedStreamsInitially(true)
+      }
     }
-  }, [getAuthHeaders])
+  }, [getAuthHeaders, hasLoadedStreamsInitially])
 
   const fetchAllUsers = useCallback(async () => {
+    setIsLoadingUsers(true)
     try {
       const headers = await getAuthHeaders()
       const response = await fetch("https://superfan.alterwork.in/api/fetch_users", {
@@ -134,6 +166,8 @@ export default function HomePage() {
     } catch (error) {
       console.error("Error fetching users:", error)
       setAllUsers([])
+    } finally {
+      setIsLoadingUsers(false)
     }
   }, [user, getAuthHeaders])
 
@@ -223,14 +257,13 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchLiveStreams()
-    fetchAllUsers()
+    fetchAllUsers() // Initial fetch for all users
     fetchPastRecordings()
     const interval = setInterval(() => {
-      fetchLiveStreams()
-      fetchAllUsers()
+      fetchLiveStreams() // Only live streams need periodic updates
     }, 30000)
     return () => clearInterval(interval)
-  }, [user, fetchLiveStreams, fetchAllUsers, fetchPastRecordings])
+  }, [user, fetchLiveStreams, fetchPastRecordings]) // Removed fetchAllUsers from dependencies
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + "M"
@@ -259,79 +292,15 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navigation />
-
-      <main className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
-          {/* Left Sidebar - All Users (Desktop View) */}
-          <aside className="lg:sticky lg:top-20 lg:h-[calc(100vh-80px)] lg:overflow-y-auto pr-4 bg-[var(--sidebar-background)] border-r border-border hidden lg:block">
-            <h2 className="text-2xl font-bold mb-4 px-4">All Users</h2>
-            <div className="space-y-3 px-3">
-              {" "}
-              {/* Adjusted space-y and px for smaller cards */}
-              {allUsers.length > 0 ? (
-                allUsers.map((user) => (
-                  <Card
-                    key={user.id}
-                    onClick={() => router.push(`/profile/${user.username}`)}
-                    className="cursor-pointer hover:shadow-lg transition-shadow"
-                  >
-                    <CardContent className="p-2">
-                      {" "}
-                      {/* Reduced padding */}
-                      <div className="flex items-center gap-2 mb-1">
-                        {" "}
-                        {/* Adjusted gap and mb */}
-                        <div className="relative">
-                          <Avatar className="h-9 w-9">
-                            {" "}
-                            {/* Reduced avatar size */}
-                            <AvatarImage
-                              src={`https://superfan.alterwork.in/files/profilepic/${user.username}.png`}
-                              alt={user.username}
-                              onError={(e) => {
-                                e.currentTarget.src = "/placeholder.svg?height=36&width=36"
-                              }}
-                            />
-                            <AvatarFallback>{user.username.charAt(0)}</AvatarFallback>
-                          </Avatar>
-                          {user.isLive && (
-                            <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full border-1 border-white"></div>
-                          )}
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-sm">@{user.username}</h3> {/* Adjusted text size */}
-                        </div>
-                        {user.isLive && (
-                          <Badge variant="destructive" className="text-xs px-1.5 py-0.5">
-                            {" "}
-                            {/* Adjusted padding for badge */}
-                            <div className="w-1 h-1 bg-white rounded-full mr-1"></div> {/* Adjusted live dot size */}
-                            LIVE
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="text-center text-xs">
-                        {" "}
-                        {/* Adjusted text size */}
-                        <div className="font-bold text-orange-600">{formatNumber(user.followers)}</div>
-                        <div className="text-xs text-muted-foreground">Followers</div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))
-              ) : (
-                <p className="text-muted-foreground text-center py-8">No users found.</p>
-              )}
-            </div>
-          </aside>
-
-          {/* Main Content Area */}
-          <section className="lg:pl-4">
+      <Navigation allUsers={allUsers} isLoadingUsers={isLoadingUsers} />
+      <SidebarProvider>
+        <AppSidebar users={allUsers} isLoading={isLoadingUsers} />
+        <SidebarInset>
+          <main className="container mx-auto px-4 py-8">
             {/* Live Now Section */}
             <h2 className="text-2xl font-bold mb-4">Live Now</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-              {isLoadingStreams ? (
+              {isLoadingStreams && !hasLoadedStreamsInitially ? (
                 Array.from({ length: 3 }).map((_, index) => (
                   <Card key={index} className="animate-pulse">
                     <div className="w-full h-24 bg-muted rounded-t-lg"></div>
@@ -343,42 +312,69 @@ export default function HomePage() {
                 ))
               ) : liveStreams.length > 0 ? (
                 liveStreams.map((stream) => (
-                  <Card key={stream.sessionId} className="cursor-pointer hover:shadow-lg transition-shadow">
-                    <div className="relative">
-                      <img
-                        src={stream.thumbnail || "/placeholder.svg"}
-                        alt={stream.title}
-                        className="w-full h-24 object-cover rounded-t-lg"
-                        onError={(e) => {
-                          const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.hookId}.jpg`
-                          if (e.currentTarget.src !== fullUrl) {
-                            e.currentTarget.src = fullUrl
-                          } else {
-                            e.currentTarget.src = "/placeholder.svg?height=96&width=320"
-                          }
-                        }}
-                      />
-                      <Badge variant="destructive" className="absolute top-2 left-2 text-xs">
-                        <div className="w-1.5 h-1.5 bg-white rounded-full mr-1"></div>
-                        LIVE
-                      </Badge>
-                      <Badge variant="secondary" className="absolute top-2 right-2 text-xs">
-                        <Users className="w-3 h-3 mr-1" />
-                        {stream.viewers}
-                      </Badge>
-                    </div>
-                    <CardContent className="p-2">
-                      <h3 className="font-semibold mb-1 text-xs">{stream.title}</h3>
-                      <p className="text-[10px] text-muted-foreground">{stream.streamer}</p>
-                      <Button
-                        size="sm"
-                        className="mt-1 w-full text-[10px]"
-                        onClick={() => window.open(`/viewer?roomId=${stream.UID}&hookId=${stream.hookId}`, "_blank")}
-                      >
-                        Watch Stream
-                      </Button>
-                    </CardContent>
-                  </Card>
+                  <div
+                    key={stream.sessionId}
+                    className="relative"
+                    style={
+                      {
+                        "--hover-bg": "rgb(249 115 22)", // orange-500
+                      } as React.CSSProperties
+                    }
+                  >
+                    <div
+                      className="absolute inset-0 rounded-lg opacity-0 transition-opacity duration-75 z-0"
+                      style={{
+                        backgroundColor: "var(--hover-bg)",
+                        transform: "translate(2px, 2px)",
+                      }}
+                    ></div>
+                    <Card
+                      className="relative z-10 cursor-pointer transition-all duration-75 hover:shadow-lg w-full h-full hover:-translate-x-[2px] hover:-translate-y-[2px]"
+                      onMouseEnter={(e) => {
+                        const bg = e.currentTarget.parentElement?.querySelector("div:first-child") as HTMLElement
+                        if (bg) bg.style.opacity = "1"
+                      }}
+                      onMouseLeave={(e) => {
+                        const bg = e.currentTarget.parentElement?.querySelector("div:first-child") as HTMLElement
+                        if (bg) bg.style.opacity = "0"
+                      }}
+                    >
+                      <div className="relative">
+                        <img
+                          src={stream.thumbnail || "/placeholder.svg"}
+                          alt={stream.title}
+                          className="w-full h-24 object-cover rounded-t-lg"
+                          onError={(e) => {
+                            const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.hookId}.jpg`
+                            if (e.currentTarget.src !== fullUrl) {
+                              e.currentTarget.src = fullUrl
+                            } else {
+                              e.currentTarget.src = "/placeholder.svg?height=96&width=320"
+                            }
+                          }}
+                        />
+                        <Badge variant="destructive" className="absolute top-2 left-2 text-xs">
+                          <div className="w-1.5 h-1.5 bg-white rounded-full mr-1"></div>
+                          LIVE
+                        </Badge>
+                        <Badge variant="secondary" className="absolute top-2 right-2 text-xs">
+                          <Users className="w-3 h-3 mr-1" />
+                          {stream.viewers}
+                        </Badge>
+                      </div>
+                      <CardContent className="p-2">
+                        <h3 className="font-semibold mb-1 text-xs">{stream.title}</h3>
+                        <p className="text-[10px] text-muted-foreground">{stream.streamer}</p>
+                        <Button
+                          size="sm"
+                          className="mt-1 w-full text-[10px]"
+                          onClick={() => window.open(`/viewer?roomId=${stream.UID}&hookId=${stream.hookId}`, "_blank")}
+                        >
+                          Watch Stream
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </div>
                 ))
               ) : (
                 <div className="col-span-full text-center py-8">
@@ -405,16 +401,15 @@ export default function HomePage() {
               isLoading={isLoadingRecordings}
             />
 
-            {/* All Users Carousel (Mobile/All Views) */}
-            <UserCarousel
-              title="Discover Users"
+            {/* All Users Carousel (mobile only) */}
+            <DiscoverUsersSection
               users={allUsers}
-              isLoading={allUsers.length === 0 && !user}
+              isLoading={isLoadingUsers}
               currentLoggedInUser={user?.displayName || user?.uid}
             />
-          </section>
-        </div>
-      </main>
+          </main>
+        </SidebarInset>
+      </SidebarProvider>
     </div>
   )
 }

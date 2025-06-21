@@ -3,18 +3,31 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Play, User, LogOut, ChevronDown, Camera } from 'lucide-react'
+import { Play, User, LogOut, ChevronDown, Camera } from "lucide-react"
 import Link from "next/link"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, signOut } from "firebase/auth"
 import { useRouter } from "next/navigation"
-import { UserSearch } from "./user-search"
-// import { GoLiveOptionsModal } from "./go-live-options-modal" // Removed import
+import { UserSearch } from "./user-search" // Re-import UserSearch
 
-export function Navigation() {
+interface UserData {
+  id: string
+  username: string
+  display_name: string
+  isLive: boolean
+  totalSessions: number
+  followers: number
+  isFollowing: boolean
+}
+
+interface NavigationProps {
+  allUsers: UserData[]
+  isLoadingUsers: boolean
+}
+
+export function Navigation({ allUsers, isLoadingUsers }: NavigationProps) {
   const [user, setUser] = useState<any>(null)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
-  // const [showGoLiveOptionsModal, setShowGoLiveOptionsModal] = useState(false) // Removed state
   const router = useRouter()
 
   useEffect(() => {
@@ -68,18 +81,13 @@ export function Navigation() {
     router.push(path)
   }
 
-  const handleStartLive = () => { // Renamed from handleGoLive
+  const handleStartLive = () => {
     if (user) {
       router.push("/streamer")
     } else {
       router.push("/login?redirect=stream")
     }
   }
-
-  // const handleUploadVideo = () => { // Removed function
-  //   console.log("Upload Video clicked!")
-  //   alert("Video upload functionality coming soon!")
-  // }
 
   return (
     <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
@@ -97,18 +105,18 @@ export function Navigation() {
 
           {/* Search Bar - Centered and takes available space */}
           <div className="hidden md:flex items-center flex-1 max-w-md mx-8">
-            <UserSearch />
+            <UserSearch users={allUsers} isLoading={isLoadingUsers} /> {/* Pass users and loading state */}
           </div>
 
           {/* User Menu and Create Button - Aligned to the right */}
           <div className="flex items-center space-x-4">
             <Button
               size="sm"
-              onClick={handleStartLive} // Directly call handleStartLive
+              onClick={handleStartLive}
               className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
             >
               <Camera className="mr-2 h-4 w-4" />
-              Start Stream {/* Changed text from 'Create' to 'Start Stream' */}
+              Start Stream
             </Button>
 
             {user ? (
@@ -173,7 +181,6 @@ export function Navigation() {
           </div>
         </div>
       </div>
-      {/* Removed GoLiveOptionsModal */}
     </nav>
   )
 }

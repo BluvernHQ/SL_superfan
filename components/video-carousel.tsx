@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { Card, CardContent } from "@/components/ui/card"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { Eye, Play } from "lucide-react"
@@ -57,38 +59,62 @@ export function VideoCarousel({
         <ScrollArea className="w-full whitespace-nowrap rounded-md pb-4">
           <div className="flex w-max space-x-4">
             {videos.map((video) => (
-              <Card
+              <div
                 key={video.id}
-                className="min-w-[280px] max-w-[280px] cursor-pointer hover:shadow-lg transition-shadow"
-                onClick={() => onPlayVideo(video)}
+                className="relative min-w-[280px] max-w-[280px]"
+                style={
+                  {
+                    "--hover-bg": "rgb(249 115 22)", // orange-500
+                  } as React.CSSProperties
+                }
               >
-                <CardContent className="p-4">
-                  <div className="relative w-full h-40 bg-black rounded mb-3 flex items-center justify-center overflow-hidden">
-                    <img
-                      src={video.thumbnail || "/placeholder.svg?height=160&width=280&query=video-thumbnail"}
-                      alt={video.title}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.src = "/placeholder.svg?height=160&width=280"
-                      }}
-                    />
-                    {!isLive && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 opacity-0 hover:opacity-100 transition-opacity">
-                        <Play className="h-10 w-10 text-white" />
-                      </div>
-                    )}
-                  </div>
-                  <h3 className="font-semibold mb-1 line-clamp-2">{video.title}</h3>
-                  {video.streamer && <p className="text-sm text-muted-foreground mb-2">{video.streamer}</p>}
-                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Eye className="w-3 h-3" />
-                      {formatNumber(video.views)}
-                    </span>
-                    {video.date && <span>{video.date}</span>}
-                  </div>
-                </CardContent>
-              </Card>
+                <div
+                  className="absolute inset-0 rounded-md opacity-0 transition-opacity duration-75 z-0"
+                  style={{
+                    backgroundColor: "var(--hover-bg)",
+                    transform: "translate(2px, 2px)",
+                  }}
+                ></div>
+                <Card
+                  className="relative z-10 cursor-pointer transition-all duration-75 hover:shadow-lg w-full h-full hover:-translate-x-[2px] hover:-translate-y-[2px]"
+                  onClick={() => onPlayVideo(video)}
+                  onMouseEnter={(e) => {
+                    const bg = e.currentTarget.parentElement?.querySelector("div:first-child") as HTMLElement
+                    if (bg) bg.style.opacity = "1"
+                  }}
+                  onMouseLeave={(e) => {
+                    const bg = e.currentTarget.parentElement?.querySelector("div:first-child") as HTMLElement
+                    if (bg) bg.style.opacity = "0"
+                  }}
+                >
+                  <CardContent className="p-4">
+                    <div className="relative w-full h-40 bg-black rounded mb-3 flex items-center justify-center overflow-hidden">
+                      <img
+                        src={video.thumbnail || "/placeholder.svg?height=160&width=280&query=video-thumbnail"}
+                        alt={video.title}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.src = "/placeholder.svg?height=160&width=280"
+                        }}
+                      />
+                      {!isLive && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 opacity-0 hover:opacity-100 transition-opacity">
+                          <Play className="h-10 w-10 text-white" />
+                        </div>
+                      )}
+                    </div>
+                    <h3 className="font-semibold mb-1 line-clamp-2">{video.title}</h3>
+                    {video.streamer && <p className="text-sm text-muted-foreground mb-2">{video.streamer}</p>}
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Eye className="w-3 h-3" />
+                        {formatNumber(video.views)}
+                      </span>
+                      {video.date && <span>{video.date}</span>}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             ))}
           </div>
           <ScrollBar orientation="horizontal" />
