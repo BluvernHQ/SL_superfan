@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -40,8 +39,11 @@ export default function ProfilePage({ params }: { params: { username: string } }
   const [isBlocked, setIsBlocked] = useState(false)
   const [isBlockingAction, setIsBlockingAction] = useState(false)
   const [isBlocking, setIsBlocking] = useState(false)
-
-  // Removed state for in-page video player: currentPlayingVideo, setCurrentPlayingVideo
+  const [authLoaded, setAuthLoaded] = useState(false)
+  const [followersList, setFollowersList] = useState<string[]>([])
+  const [followingList, setFollowingList] = useState<string[]>([])
+  const [isLoadingFollowers, setIsLoadingFollowers] = useState(false)
+  const [isLoadingFollowing, setIsLoadingFollowing] = useState(false)
 
   const getAuthHeaders = async () => {
     const headers: Record<string, string> = {
@@ -61,17 +63,34 @@ export default function ProfilePage({ params }: { params: { username: string } }
     return headers
   }
 
+  // Check if this is own profile based on current user and profile data
+  const checkIsOwnProfile = (user: any, profileData: UserProfileData | null) => {
+    if (!user || !profileData) return false
+
+    console.log("Checking ownership:")
+    console.log("- User displayName:", user.displayName)
+    console.log("- User UID:", user.uid)
+    console.log("- Profile username:", params.username)
+    console.log("- Profile UID:", profileData.UID)
+
+    // Check both displayName and UID
+    const isOwnerByName = user.displayName === params.username
+    const isOwnerByUID = user.uid === profileData.UID
+
+    console.log("- Owner by name:", isOwnerByName)
+    console.log("- Owner by UID:", isOwnerByUID)
+
+    return isOwnerByName || isOwnerByUID
+  }
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log("Auth state changed:", user?.displayName)
       setCurrentUser(user)
-      if (user?.displayName === params.username) {
-        setIsOwnProfile(true)
-      } else {
-        setIsOwnProfile(false)
-      }
+      setAuthLoaded(true)
     })
     return () => unsubscribe()
-  }, [params.username])
+  }, [])
 
   const fetchUserDetails = async () => {
     setIsLoadingProfile(true)
@@ -88,13 +107,15 @@ export default function ProfilePage({ params }: { params: { username: string } }
       })
 
       if (response.ok) {
-        const data: UserProfileData = await response.json()
-        setProfileData(data["user"])
-        if (currentUser && currentUser.uid === data.UID) {
-          setIsOwnProfile(true)
-        } else {
-          setIsOwnProfile(false)
-        }
+        const data = await response.json()
+        console.log("Fetched user data:", data)
+        const userData = data["user"] || data
+        setProfileData(userData)
+
+        // Check ownership after we have both user and profile data
+        const isOwner = checkIsOwnProfile(currentUser, userData)
+        setIsOwnProfile(isOwner)
+        console.log("Setting isOwnProfile to:", isOwner)
       } else {
         console.error("Failed to fetch user details:", response.status, response.statusText)
         setProfileData(null)
@@ -107,12 +128,22 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
   }
 
+  // Fetch user details when auth is loaded and we have the username
   useEffect(() => {
-    if (params.username) {
+    if (authLoaded && params.username) {
       fetchUserDetails()
       fetchPastRecordings()
     }
-  }, [params.username, currentUser])
+  }, [authLoaded, params.username])
+
+  // Re-check ownership when currentUser or profileData changes
+  useEffect(() => {
+    if (currentUser && profileData) {
+      const isOwner = checkIsOwnProfile(currentUser, profileData)
+      setIsOwnProfile(isOwner)
+      console.log("Re-checking ownership, setting isOwnProfile to:", isOwner)
+    }
+  }, [currentUser, profileData, params.username])
 
   useEffect(() => {
     if (currentUser && isOwnProfile) {
@@ -188,9 +219,11 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
       if (response.ok) {
         const data = await response.json()
+        console.log("Blocklist response:", data)
         if (data.blocklist && Array.isArray(data.blocklist)) {
           const usernames = data.blocklist.map((item: any) => item.blocklist || item)
           setBlacklistedUsers(usernames)
+          console.log("Set blacklisted users:", usernames)
         } else {
           console.warn("Unexpected blocklist response format:", data)
           setBlacklistedUsers([])
@@ -209,6 +242,80 @@ export default function ProfilePage({ params }: { params: { username: string } }
       setBlacklistedUsers([])
     } finally {
       setIsLoadingBlocklist(false)
+    }
+  }
+
+  const fetchFollowers = async () => {
+    setIsLoadingFollowers(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/fetch_followers", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            username: params.username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Followers response:", data)
+        if (data.followers && Array.isArray(data.followers)) {
+          const usernames = data.followers.map((item: any) => item.followed_by)
+          setFollowersList(usernames)
+          console.log("Set followers list:", usernames)
+        } else {
+          console.warn("Unexpected followers response format:", data)
+          setFollowersList([])
+        }
+      } else {
+        console.error("Failed to fetch followers:", response.status, response.statusText)
+        setFollowersList([])
+      }
+    } catch (error: any) {
+      console.error("Error fetching followers:", error)
+      setFollowersList([])
+    } finally {
+      setIsLoadingFollowers(false)
+    }
+  }
+
+  const fetchFollowing = async () => {
+    setIsLoadingFollowing(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/fetch_following", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            username: params.username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Following response:", data)
+        if (data.following && Array.isArray(data.following)) {
+          const usernames = data.following.map((item: any) => item.follow)
+          setFollowingList(usernames)
+          console.log("Set following list:", usernames)
+        } else {
+          console.warn("Unexpected following response format:", data)
+          setFollowingList([])
+        }
+      } else {
+        console.error("Failed to fetch following:", response.status, response.statusText)
+        setFollowingList([])
+      }
+    } catch (error: any) {
+      console.error("Error fetching following:", error)
+      setFollowingList([])
+    } finally {
+      setIsLoadingFollowing(false)
     }
   }
 
@@ -280,44 +387,6 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
   }
 
-  const handleBlacklistUser = async (username: string) => {
-    if (!currentUser) return
-
-    try {
-      const headers = await getAuthHeaders()
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000)
-
-      const response = await fetch("https://superfan.alterwork.in/api/add_blocklist", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            blocklist_by: currentUser.displayName,
-            blocklist: username,
-          },
-        }),
-        signal: controller.signal,
-      })
-
-      clearTimeout(timeoutId)
-
-      if (response.ok) {
-        setBlacklistedUsers((prev) => [...prev, username])
-        console.log(`Successfully blocked ${username}`)
-      } else {
-        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
-        console.error(`Failed to block user: ${response.status} - ${errorData.message || errorData.reason}`)
-        alert(`Failed to block user: ${errorData.message || "Please try again."}`)
-      }
-    } catch (error: any) {
-      console.error(`Error blocking user: ${error.message}`)
-      if (error.name !== "AbortError") {
-        alert(`Error blocking user: ${error.message}`)
-      }
-    }
-  }
-
   const handleUnblacklistUser = async (username: string) => {
     if (!currentUser) return
 
@@ -356,10 +425,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
   }
 
-  // handlePlayRecording is no longer needed as in-page player for individual videos is removed
-  // If needed for future modal, it would be re-added here.
   const handlePlayRecording = (recording: any) => {
-    // This function is now a no-op or could trigger a modal if re-introduced
     console.log("Playing recording (placeholder):", recording.title)
   }
 
@@ -535,7 +601,10 @@ export default function ProfilePage({ params }: { params: { username: string } }
     setIsFollowing(false)
     setIsBlocked(false)
     setIsOwnProfile(false)
-    // Removed setCurrentPlayingVideo(null)
+    setFollowersList([])
+    setFollowingList([])
+    setIsLoadingFollowers(false)
+    setIsLoadingFollowing(false)
   }, [params.username])
 
   const handleEditProfile = () => {
@@ -545,6 +614,12 @@ export default function ProfilePage({ params }: { params: { username: string } }
   const handleEditPanels = () => {
     alert("Edit Panels functionality coming soon!")
   }
+
+  console.log("Final render state:")
+  console.log("- isOwnProfile:", isOwnProfile)
+  console.log("- currentUser:", currentUser?.displayName)
+  console.log("- params.username:", params.username)
+  console.log("- authLoaded:", authLoaded)
 
   return (
     <div className="min-h-screen bg-background">
@@ -648,50 +723,24 @@ export default function ProfilePage({ params }: { params: { username: string } }
             isOwnProfile={isOwnProfile}
             pastRecordings={pastRecordings}
             isLoadingRecordings={isLoadingRecordings}
-            onPlayRecording={handlePlayRecording} // Pass the updated handler (now a no-op)
+            onPlayRecording={handlePlayRecording}
             profileData={profileData}
             onEditProfile={handleEditProfile}
             onEditPanels={handleEditPanels}
-            // Removed currentPlayingVideo and setCurrentPlayingVideo props
+            blacklistedUsers={blacklistedUsers}
+            isLoadingBlocklist={isLoadingBlocklist}
+            handleUnblacklistUser={handleUnblacklistUser}
+            followersList={followersList}
+            followingList={followingList}
+            isLoadingFollowers={isLoadingFollowers}
+            isLoadingFollowing={isLoadingFollowing}
+            fetchFollowers={fetchFollowers}
+            fetchFollowing={fetchFollowing}
           />
         ) : (
           <div className="text-center text-muted-foreground py-8">
             <p>User profile not found.</p>
           </div>
-        )}
-
-        {/* Blacklisted Users (For any logged-in user) */}
-        {currentUser && isOwnProfile && (
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Blacklisted Users</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {isLoadingBlocklist ? (
-                <div className="space-y-2">
-                  {Array.from({ length: 3 }).map((_, index) => (
-                    <div key={index} className="flex items-center justify-between p-2 border rounded animate-pulse">
-                      <div className="h-4 bg-muted rounded w-1/3"></div>
-                      <div className="h-8 bg-muted rounded w-16"></div>
-                    </div>
-                  ))}
-                </div>
-              ) : blacklistedUsers.length > 0 ? (
-                <div className="space-y-2">
-                  {blacklistedUsers.map((username) => (
-                    <div key={username} className="flex items-center justify-between p-2 border rounded">
-                      <span>@{username}</span>
-                      <Button size="sm" variant="outline" onClick={() => handleUnblacklistUser(username)}>
-                        Unblock
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No blacklisted users</p>
-              )}
-            </CardContent>
-          </Card>
         )}
       </div>
     </div>

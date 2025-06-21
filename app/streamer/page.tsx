@@ -650,7 +650,7 @@ export default function StreamerPage() {
         publishers: 1,
         record: true,
         rec_dir: "/root/superfan_complete/recordings_raw",
-        bitrate: 5,000,000,
+        bitrate: 5000000,
       },
     }
     const response = await sendToProxy(
@@ -920,6 +920,13 @@ export default function StreamerPage() {
       // Set loading state to false when cleanup is complete
       setIsLoading(false)
       log("Streamer: Streaming stopped and resources cleaned up.")
+      const username = getUserDisplayName()
+      if (username) {
+        router.push(`/profile/${username}`)
+      } else {
+        log("Could not get username for redirection.")
+        router.push("/") // Fallback to home page if username is not available
+      }
     })
   }
 
@@ -945,7 +952,7 @@ export default function StreamerPage() {
 
   const handleCopyStreamUrl = () => {
     if (createdRoomId && currentHookId) {
-      const streamUrl = `${window.location.origin}/viewer?roomId=${createdRoomId}&hookId=${currentHookId}`
+      const streamUrl = `${window.location.origin}/viewer?type=live&roomId=${createdRoomId}&hookId=${currentHookId}`
       navigator.clipboard.writeText(streamUrl)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
@@ -973,7 +980,7 @@ export default function StreamerPage() {
 
   const getStreamUrl = () => {
     if (createdRoomId && currentHookId) {
-      return `${window.location.origin}/viewer?roomId=${createdRoomId}&hookId=${currentHookId}`
+      return `${window.location.origin}/viewer?type=live&roomId=${createdRoomId}&hookId=${currentHookId}`
     }
     return ""
   }
@@ -1249,6 +1256,7 @@ export default function StreamerPage() {
         onOpenChange={setShowShareModal}
         streamUrl={getStreamUrl()}
         streamTitle={title || "My Live Stream"}
+        isLoadingUrl={!createdRoomId || !currentHookId} // Pass loading state for URL
       />
 
       {/* Stream Details Modal */}

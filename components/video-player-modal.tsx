@@ -51,7 +51,7 @@ export function VideoPlayerModal({ open, onOpenChange, videoUrl, videoTitle }: V
               className="w-full h-full object-contain"
               onError={handleVideoError}
             >
-              <source src={videoUrl} type="video/mp4" />
+              <source src={videoUrl} type="video/webm" />
               Your browser does not support the video tag.
             </video>
           ) : (
@@ -62,7 +62,7 @@ export function VideoPlayerModal({ open, onOpenChange, videoUrl, videoTitle }: V
                 The video could not be loaded, either due to a format issue or a problem with the server.
               </p>
               <p className="text-xs mt-2">
-                Please ensure the video file (.mp4) is correctly encoded and accessible from the server.
+                Please ensure the video file (.webm) is correctly encoded and accessible from the server.
               </p>
             </div>
           )}

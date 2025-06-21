@@ -1,22 +1,58 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Heart, Share, Users, Eye, Play, Square, VolumeX, Volume2, ChevronDown, ChevronUp } from "lucide-react"
+import { Heart, Share, Eye, Play, VolumeX, Volume2, ChevronDown, ChevronUp, ArrowLeft } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { LiveChat } from "@/components/live-chat"
 import { ShareModal } from "@/components/share-modal"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { auth } from "@/lib/firebase"
 import { getIdToken, onAuthStateChanged } from "firebase/auth"
-import { useRouter } from "next/navigation"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar" // Import Avatar components
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
-// Video Player Component
-const VideoPlayer = ({ stream, muted, volume }: { stream: MediaStream; muted: boolean; volume: number }) => {
+// Video Player Component for recorded videos
+const RecordedVideoPlayer = ({ videoUrl, title }: { videoUrl: string; title: string }) => {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [hasVideoError, setHasVideoError] = useState(false)
+
+  const handleVideoError = (e: React.SyntheticEvent<HTMLVideoElement, Event>) => {
+    console.error("Video playback error:", e.currentTarget.error)
+    setHasVideoError(true)
+  }
+
+  if (hasVideoError) {
+    return (
+      <div className="flex flex-col items-center justify-center w-full h-full text-muted-foreground p-4 text-center bg-black">
+        <div className="text-red-500 mb-4">⚠️</div>
+        <p className="text-lg font-medium mb-2">Video Playback Error</p>
+        <p className="text-sm">The video could not be loaded. Please check if the file exists on the server.</p>
+      </div>
+    )
+  }
+
+  return (
+    <video
+      ref={videoRef}
+      src={videoUrl}
+      controls
+      autoPlay
+      playsInline
+      className="w-full h-full object-contain"
+      onError={handleVideoError}
+    >
+      <source src={videoUrl} type="video/webm" />
+      Your browser does not support the video tag.
+    </video>
+  )
+}
+
+// Live Video Player Component
+const LiveVideoPlayer = ({ stream, muted, volume }: { stream: MediaStream; muted: boolean; volume: number }) => {
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
@@ -38,44 +74,57 @@ const VideoPlayer = ({ stream, muted, volume }: { stream: MediaStream; muted: bo
 
 export default function ViewerPage() {
   const searchParams = useSearchParams()
-  const roomIdFromUrl = searchParams.get("roomId")
-  const hookIdFromUrl = searchParams.get("hookId") // Get hookId from URL
   const router = useRouter()
 
+  // Get URL parameters
+  const type = searchParams.get("type") // "live" or "storage"
+  const roomId = searchParams.get("roomId") // for live streams
+  const hookId = searchParams.get("hookId") // for both live and recorded
+  const videoId = searchParams.get("video") // alternative to hookId for recorded videos
+
+  // Determine the actual video/room ID to use
+  const actualVideoId = videoId || hookId
+  const actualRoomId = roomId
+
+  // State for both live and recorded videos
   const [isFollowing, setIsFollowing] = useState(false)
   const [likes, setLikes] = useState(156)
   const [hasLiked, setHasLiked] = useState(false)
-  const [roomId, setRoomId] = useState(roomIdFromUrl || "")
-  const [isWatching, setIsWatching] = useState(false)
-  const [remoteFeeds, setRemoteFeeds] = useState<{ [key: string]: { stream: MediaStream } }>({})
   const [currentViewers, setCurrentViewers] = useState(1)
-  const [connectionState, setConnectionState] = useState<string>("disconnected")
-  const [isAudioMuted, setIsAudioMuted] = useState(true) // Muted by default
-  const [volume, setVolume] = useState(50) // Volume from 0-100
-  const [sidebarStreams, setSidebarStreams] = useState<any[]>([])
-  const [isLoadingSidebarStreams, setIsLoadingSidebarStreams] = useState(true)
   const [showDescription, setShowDescription] = useState(false)
   const [showShareModal, setShowShareModal] = useState(false)
-  const [currentUserDisplayName, setCurrentUserDisplayName] = useState("Guest") // Default for chat
-  const [isChatEnabled, setIsChatEnabled] = useState(true) // State for chat enablement
+  const [currentUserDisplayName, setCurrentUserDisplayName] = useState("Guest")
+  const [isChatEnabled, setIsChatEnabled] = useState(true)
   const [isLiking, setIsLiking] = useState(false)
   const [isFollowingAction, setIsFollowingAction] = useState(false)
-  const [isBlockedByStreamer, setIsBlockedByStreamer] = useState(false) // New state for block status
+  const [isBlockedByStreamer, setIsBlockedByStreamer] = useState(false)
 
-  // Stream details from API
+  // Live streaming specific state
+  const [isWatching, setIsWatching] = useState(false)
+  const [remoteFeeds, setRemoteFeeds] = useState<{ [key: string]: { stream: MediaStream } }>({})
+  const [connectionState, setConnectionState] = useState<string>("disconnected")
+  const [isAudioMuted, setIsAudioMuted] = useState(true)
+  const [volume, setVolume] = useState(50)
+
+  // Recorded video specific state
+  const [recordedVideoUrl, setRecordedVideoUrl] = useState<string>("")
+  const [isLoadingVideo, setIsLoadingVideo] = useState(false)
+
+  // Common state
   const [streamDetails, setStreamDetails] = useState<{
     title: string
     description: string
     streamerName: string
     streamerUID: string
     startTime: string
-    chatEnabled: boolean // Add chatEnabled to stream details
+    chatEnabled: boolean
   } | null>(null)
   const [isLoadingStreamDetails, setIsLoadingStreamDetails] = useState(false)
+  const [sidebarStreams, setSidebarStreams] = useState<any[]>([])
+  const [isLoadingSidebarStreams, setIsLoadingSidebarStreams] = useState(true)
 
+  // WebRTC refs (only for live streams)
   const remoteVideosRef = useRef<HTMLDivElement>(null)
-
-  // WebRTC and Janus related refs
   const janusSessionIdRef = useRef<string | null>(null)
   const mainVideoRoomHandleRef = useRef<string | null>(null)
   const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -95,7 +144,6 @@ export default function ViewerPage() {
       try {
         const authToken = await getIdToken(auth.currentUser)
         headers["Authorization"] = `Bearer ${authToken}`
-        console.log("Firebase auth token added to request headers")
       } catch (tokenError) {
         console.log(`Error getting Firebase token: ${tokenError}`)
       }
@@ -104,7 +152,7 @@ export default function ViewerPage() {
     return headers
   }
 
-  // Get current user's display name for chat
+  // Get current user's display name
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -116,9 +164,64 @@ export default function ViewerPage() {
     return () => unsubscribe()
   }, [])
 
-  // Function to fetch stream details
+  // Initialize based on type
+  useEffect(() => {
+    if (type === "storage" && actualVideoId) {
+      // Handle recorded video
+      setRecordedVideoUrl(`https://superfan.alterwork.in/files/videos/${actualVideoId}.webm`)
+      fetchVideoDetails(actualVideoId)
+    } else if (type === "live" && actualRoomId) {
+      // Handle live stream
+      handleWatchStream()
+      fetchStreamDetails(actualRoomId)
+    } else {
+      console.error("Invalid URL parameters. Expected type=storage&video=ID or type=live&roomId=ID")
+    }
+  }, [type, actualVideoId, actualRoomId])
+
+  // Fetch video details for recorded videos
+  const fetchVideoDetails = async (videoId: string) => {
+    try {
+      setIsLoadingStreamDetails(true)
+      const headers = await getAuthHeaders()
+
+      const response = await fetch("https://superfan.alterwork.in/api/get_rec", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            username: "all",
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (Array.isArray(data.user)) {
+          const video = data.user.find((rec: any) => rec.hookId === videoId)
+          if (video) {
+            setStreamDetails({
+              title: video.title || video.description || `Recording ${videoId}`,
+              description: video.description || "",
+              streamerName: video.name || "Unknown",
+              streamerUID: video.UID || "",
+              startTime: video.start || "",
+              chatEnabled: false, // Recorded videos don't have live chat
+            })
+            setLikes(video.likes || 0)
+            setCurrentViewers(video.maxviews || 0)
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching video details:", error)
+    } finally {
+      setIsLoadingStreamDetails(false)
+    }
+  }
+
+  // Fetch stream details for live streams (existing function)
   const fetchStreamDetails = async (roomId: string) => {
-    console.log("Attempting to fetch stream details for roomId:", roomId) // Debug log
     try {
       setIsLoadingStreamDetails(true)
       const headers = await getAuthHeaders()
@@ -133,174 +236,37 @@ export default function ViewerPage() {
         }),
       })
 
-      console.log("Raw response from get_live_det:", response) // Debug log
-
       if (response.ok) {
         const data = await response.json()
-        console.log("Stream details data from API:", data) // Debug log
-
         setStreamDetails({
-          title: data.title || `Live Stream - Room ${roomId}`,
-          description: data.description || "",
-          streamerName: data.name || "Streamer",
-          streamerUID: data.UID || "",
-          startTime: data.start || "",
-          chatEnabled: data.chatEnabled !== undefined ? data.chatEnabled : true, // Default to true if not provided
-        })
-        setIsChatEnabled(data.chatEnabled !== undefined ? data.chatEnabled : true) // Update chat enabled state
-
-        console.log("Stream details state after update:", {
           title: data.title || `Live Stream - Room ${roomId}`,
           description: data.description || "",
           streamerName: data.name || "Streamer",
           streamerUID: data.UID || "",
           startTime: data.start || "",
           chatEnabled: data.chatEnabled !== undefined ? data.chatEnabled : true,
-        }) // Debug log
+        })
+        setIsChatEnabled(data.chatEnabled !== undefined ? data.chatEnabled : true)
 
-        // Also update likes from the API response
         if (data.likes !== undefined) {
           setLikes(data.likes)
         }
-      } else {
-        console.error("Failed to fetch stream details:", response.status, response.statusText)
-        // Set fallback details
-        setStreamDetails({
-          title: `Live Stream - Room ${roomId}`,
-          description: "",
-          streamerName: "Streamer",
-          streamerUID: "",
-          startTime: "",
-          chatEnabled: true, // Fallback to true
-        })
-        setIsChatEnabled(true) // Fallback to true
       }
     } catch (error) {
       console.error("Error fetching stream details:", error)
-      // Set fallback details
-      setStreamDetails({
-        title: `Live Stream - Room ${roomId}`,
-        description: "",
-        streamerName: "Streamer",
-        streamerUID: "",
-        startTime: "",
-        chatEnabled: true, // Fallback to true
-      })
-      setIsChatEnabled(true) // Fallback to true
     } finally {
       setIsLoadingStreamDetails(false)
     }
   }
 
-  // Function to increment view count when viewer connects
-  const incrementViewCount = async (sessionId: string, roomId: string) => {
-    try {
-      const headers = await getAuthHeaders()
-
-      const response = await fetch("https://superfan.alterwork.in/api/create_view", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            session_id: sessionId,
-            room_id: roomId,
-          },
-        }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        log(`View count incremented successfully: ${JSON.stringify(data)}`)
-      } else {
-        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
-        log(`Failed to increment view count: ${response.status} - ${errorData.message || errorData.reason}`)
-      }
-    } catch (error: any) {
-      log(`Error incrementing view count: ${error.message}`)
-    }
-  }
-
-  const fetchViewCount = async () => {
-    if (!roomId) return
-
-    try {
-      const headers = await getAuthHeaders()
-
-      const response = await fetch("https://superfan.alterwork.in/api/get_views", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            room_id: roomId,
-          },
-        }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log("View count data:", data) // Debug log
-
-        // Update the current viewers count with real data from API
-        if (data.views !== undefined) {
-          // Ensure at least 1 viewer is shown when someone is actively watching
-          setCurrentViewers(Math.max(data.views, isWatching ? 1 : 0))
-        } else if (isWatching) {
-          // If no view data but someone is watching, show at least 1
-          setCurrentViewers(Math.max(currentViewers, 1))
-        }
-      } else {
-        console.error("Failed to fetch view count:", response.status, response.statusText)
-      }
-    } catch (error) {
-      console.error("Error fetching view count:", error)
-    }
-  }
-
-  // Start watching automatically if room ID is in URL
-  useEffect(() => {
-    if (roomIdFromUrl && !isWatching) {
-      handleWatchStream()
-    }
-  }, [roomIdFromUrl])
-
-  // Fetch stream details when roomId changes
-  useEffect(() => {
-    console.log("useEffect triggered for roomId:", roomId) // Debug log
-    if (roomId) {
-      fetchStreamDetails(roomId)
-    }
-  }, [roomId])
-
-  // Fetch view count periodically when watching
-  useEffect(() => {
-    if (isWatching && roomId) {
-      // Fetch immediately
-      fetchViewCount()
-
-      // Then fetch every 10 seconds
-      const interval = setInterval(fetchViewCount, 10000)
-      return () => clearInterval(interval)
-    }
-  }, [isWatching, roomId])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (isWatching || janusSessionIdRef.current) {
-        stopWatchingCleanup()
-      }
-    }
-  }, [])
-
+  // Live streaming functions (existing WebRTC code)
   const log = (message: string) => {
     console.log(message)
   }
 
   const sendToProxy = async (path: string, payload: any, method = "POST") => {
-    log(`Sending to proxy (${method}): ${path} with payload: ${JSON.stringify(payload)}`)
     try {
       const headers = await getAuthHeaders()
-
       const response = await fetch(FLASK_PROXY_URL, {
         method: "POST",
         headers,
@@ -309,15 +275,12 @@ export default function ViewerPage() {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
-        log(`Proxy Error: ${response.status} - ${errorData.error?.reason || response.statusText}`)
         throw new Error(`Proxy error: ${response.status} - ${errorData.error?.reason || response.statusText}`)
       }
 
       const data = await response.json()
-      log(`Received from proxy: ${JSON.stringify(data)}`)
       return data
     } catch (error: any) {
-      log(`Error in sendToProxy: ${error.message}`)
       throw error
     }
   }
@@ -579,9 +542,9 @@ export default function ViewerPage() {
         }))
 
         // Increment view count when video stream is successfully received
-        if (janusSessionIdRef.current && roomId) {
-          incrementViewCount(janusSessionIdRef.current, roomId)
-          log(`Called incrementViewCount for session ${janusSessionIdRef.current} and room ${roomId}`)
+        if (janusSessionIdRef.current && actualRoomId) {
+          incrementViewCount(janusSessionIdRef.current, actualRoomId)
+          log(`Called incrementViewCount for session ${janusSessionIdRef.current} and room ${actualRoomId}`)
         }
       }
     }
@@ -652,21 +615,49 @@ export default function ViewerPage() {
   }
 
   const handleWatchStream = async () => {
-    if (!roomId) {
+    if (!actualRoomId) {
       alert("Please enter a valid Room ID from the streamer.")
       return
     }
-    log(`Attempting to watch stream in room: ${roomId}`)
+    log(`Attempting to watch stream in room: ${actualRoomId}`)
     stopPollingRef.current = false
 
     try {
       await createJanusSession()
       await attachVideoRoomPlugin(true)
-      await joinRoomAsSubscriber(roomId)
+      await joinRoomAsSubscriber(actualRoomId)
     } catch (error: any) {
       log(`Error watching stream: ${error.message}`)
       alert(`Error watching stream: ${error.message}`)
       stopWatchingCleanup()
+    }
+  }
+
+  // Function to increment view count when viewer connects
+  const incrementViewCount = async (sessionId: string, roomId: string) => {
+    try {
+      const headers = await getAuthHeaders()
+
+      const response = await fetch("https://superfan.alterwork.in/api/create_view", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            session_id: sessionId,
+            room_id: roomId,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        log(`View count incremented successfully: ${JSON.stringify(data)}`)
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        log(`Failed to increment view count: ${response.status} - ${errorData.message || errorData.reason}`)
+      }
+    } catch (error: any) {
+      log(`Error incrementing view count: ${error.message}`)
     }
   }
 
@@ -712,7 +703,7 @@ export default function ViewerPage() {
   }
 
   async function handleLike() {
-    if (hasLiked || !roomId || isLiking) {
+    if (hasLiked || !actualRoomId || isLiking) {
       return
     }
     setIsLiking(true)
@@ -723,7 +714,7 @@ export default function ViewerPage() {
         headers,
         body: JSON.stringify({
           payload: {
-            room_id: roomId,
+            room_id: actualRoomId,
           },
         }),
       })
@@ -748,10 +739,10 @@ export default function ViewerPage() {
   // Add the `handleUnlike` function:
   async function handleUnfollow() {
     if (!auth.currentUser) {
-      router.push("/login?redirect=viewer&roomId=" + roomId)
+      router.push("/login?redirect=viewer&roomId=" + actualRoomId)
       return
     }
-    if (!isFollowing || !roomId || isFollowingAction || !streamDetails?.streamerName) {
+    if (!isFollowing || !actualRoomId || isFollowingAction || !streamDetails?.streamerName) {
       return
     }
     setIsFollowingAction(true)
@@ -786,10 +777,10 @@ export default function ViewerPage() {
 
   async function handleFollow() {
     if (!auth.currentUser) {
-      router.push("/login?redirect=viewer&roomId=" + roomId)
+      router.push("/login?redirect=viewer&roomId=" + actualRoomId)
       return
     }
-    if (isFollowing || !roomId || isFollowingAction || !streamDetails?.streamerName) {
+    if (isFollowing || !actualRoomId || isFollowingAction || !streamDetails?.streamerName) {
       return
     }
     setIsFollowingAction(true)
@@ -907,74 +898,16 @@ export default function ViewerPage() {
   }, [streamDetails?.streamerName, currentUserDisplayName])
 
   const formatNumber = (num: number) => {
-    if (num >= 1000000) {
-      return (num / 1000000).toFixed(1) + "M"
-    }
-    if (num >= 1000) {
-      return (num / 1000).toFixed(1) + "K"
-    }
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + "M"
+    if (num >= 1000) return (num / 1000).toFixed(1) + "K"
     return num.toString()
   }
 
-  const fetchSidebarStreams = async () => {
-    try {
-      setIsLoadingSidebarStreams(true)
-      const headers = await getAuthHeaders()
-
-      const response = await fetch("https://superfan.alterwork.in/api/get_live", {
-        method: "GET",
-        headers,
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log("Sidebar streams data:", data) // Debug log
-
-        // Convert the streams object to an array and filter out current room
-        const streamsArray = Object.entries(data.live || {})
-          .filter(
-            ([sessionId, streamData]: [string, any]) =>
-              // Exclude current room by roomId OR hookId
-              streamData.roomId !== roomId && streamData.hookId !== hookIdFromUrl,
-          )
-          .map(([sessionId, streamData]: [string, any]) => {
-            // Use streamData.hookId for the thumbnail URL
-            const thumbnailUrl = `https://superfan.alterwork.in/files/thumbnails/${streamData.hookId}.jpg`
-            console.log("Generated sidebar thumbnail URL:", thumbnailUrl) // Debug log
-
-            return {
-              sessionId,
-              ...streamData,
-              id: streamData.roomId,
-              title: streamData.title || `${streamData.name}'s Stream`, // Use title from API
-              streamer: streamData.name,
-              viewers: streamData.views || 0, // Use real views from API
-              likes: streamData.likes || 0, // Include likes from API
-              thumbnail: thumbnailUrl,
-            }
-          })
-          .slice(0, 5) // Show only top 5
-
-        console.log("Processed sidebar streams:", streamsArray) // Debug log
-        setSidebarStreams(streamsArray)
-      }
-    } catch (error) {
-      console.error("Error fetching sidebar streams:", error)
-    } finally {
-      setIsLoadingSidebarStreams(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchSidebarStreams()
-    // Poll for updates every 60 seconds
-    const interval = setInterval(fetchSidebarStreams, 30000) // Update every 30 seconds
-    return () => clearInterval(interval)
-  }, [roomId, hookIdFromUrl]) // Add hookIdFromUrl to dependencies
-
-  const getStreamUrl = () => {
-    if (roomId) {
-      return `${window.location.origin}/viewer?roomId=${roomId}`
+  const getShareUrl = () => {
+    if (type === "storage" && actualVideoId) {
+      return `${window.location.origin}/viewer?type=storage&video=${actualVideoId}`
+    } else if (type === "live" && actualRoomId) {
+      return `${window.location.origin}/viewer?type=live&roomId=${actualRoomId}${hookId ? `&hookId=${hookId}` : ""}`
     }
     return ""
   }
@@ -989,42 +922,6 @@ export default function ViewerPage() {
     }
   }
 
-  console.log("Current streamDetails state in render:", streamDetails) // Debug log
-
-  async function handleUnlike() {
-    if (!hasLiked || !roomId || isLiking) {
-      return
-    }
-    setIsLiking(true)
-    try {
-      const headers = await getAuthHeaders()
-      const response = await fetch("https://superfan.alterwork.in/api/delete_like", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            room_id: roomId,
-          },
-        }),
-      })
-
-      if (response.ok) {
-        setLikes((prev) => prev - 1)
-        setHasLiked(false)
-        log("Like successfully removed.")
-      } else {
-        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
-        log(`Failed to remove like: ${response.status} - ${errorData.message || errorData.reason}`)
-        alert(`Failed to unlike stream: ${errorData.message || "Please try again."}`)
-      }
-    } catch (error: any) {
-      log(`Error removing like: ${error.message}`)
-      alert(`Error unliking stream: ${error.message}`)
-    } finally {
-      setIsLiking(false)
-    }
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -1033,36 +930,11 @@ export default function ViewerPage() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Main Content Column */}
           <div className="lg:col-span-3 flex flex-col gap-4">
-            {/* Room ID Input (only show if no roomId in URL) */}
-            {!roomIdFromUrl && (
-              <Card className="">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      placeholder="Enter Room ID from streamer"
-                      value={roomId}
-                      onChange={(e) => setRoomId(e.target.value)}
-                      disabled={isWatching}
-                      className="flex-1"
-                    />
-                    {!isWatching ? (
-                      <Button
-                        onClick={handleWatchStream}
-                        className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-                      >
-                        <Play className="h-4 w-4 mr-2" />
-                        Watch Stream
-                      </Button>
-                    ) : (
-                      <Button onClick={stopWatchingCleanup} variant="destructive">
-                        <Square className="h-4 w-4 mr-2" />
-                        Stop Watching
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            {/* Back Button */}
+            <Button variant="ghost" size="sm" onClick={() => router.back()} className="self-start">
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
 
             {/* Main Video Section */}
             <Card className="flex-1">
@@ -1070,30 +942,43 @@ export default function ViewerPage() {
                 <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
                   {/* Video Player */}
                   <div ref={remoteVideosRef} className="w-full h-full">
-                    {Object.entries(remoteFeeds).map(([id, feed]) => (
-                      <VideoPlayer key={id} stream={feed.stream} muted={isAudioMuted} volume={volume} />
-                    ))}
-
-                    {!isWatching && (
+                    {type === "storage" && recordedVideoUrl ? (
+                      <RecordedVideoPlayer
+                        videoUrl={recordedVideoUrl}
+                        title={streamDetails?.title || "Recorded Video"}
+                      />
+                    ) : type === "live" && Object.keys(remoteFeeds).length > 0 ? (
+                      Object.entries(remoteFeeds).map(([id, feed]) => (
+                        <LiveVideoPlayer key={id} stream={feed.stream} muted={isAudioMuted} volume={volume} />
+                      ))
+                    ) : type === "live" ? (
+                      <div className="absolute inset-0 flex items-center justify-center text-white">
+                        <div className="text-center">
+                          {isWatching ? (
+                            <>
+                              <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                              <p className="text-lg">Connecting to live stream...</p>
+                            </>
+                          ) : (
+                            <>
+                              <Play className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                              <p className="text-lg">Loading live stream...</p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
                       <div className="absolute inset-0 flex items-center justify-center text-white">
                         <div className="text-center">
                           <Play className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                          <p className="text-lg">Enter a Room ID to start watching</p>
-                        </div>
-                      </div>
-                    )}
-                    {isWatching && Object.keys(remoteFeeds).length === 0 && (
-                      <div className="absolute inset-0 flex items-center justify-center text-white">
-                        <div className="text-center">
-                          <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                          <p className="text-lg">Connecting to stream...</p>
+                          <p className="text-lg">Loading video...</p>
                         </div>
                       </div>
                     )}
                   </div>
 
                   {/* Video Overlays */}
-                  {isWatching && (
+                  {type === "live" && isWatching && (
                     <>
                       <div className="absolute top-4 left-4">
                         <Badge variant="destructive" className="text-sm">
@@ -1102,7 +987,7 @@ export default function ViewerPage() {
                         </Badge>
                       </div>
 
-                      {/* Audio Controls - Moved to bottom right */}
+                      {/* Audio Controls for live streams */}
                       <div className="absolute bottom-4 right-4 flex items-center gap-2">
                         <Button
                           variant="secondary"
@@ -1113,7 +998,6 @@ export default function ViewerPage() {
                           {isAudioMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                         </Button>
 
-                        {/* Volume Slider */}
                         {!isAudioMuted && (
                           <div className="flex items-center gap-2 bg-black/70 rounded px-2 py-1">
                             <input
@@ -1123,9 +1007,6 @@ export default function ViewerPage() {
                               value={volume}
                               onChange={(e) => setVolume(Number(e.target.value))}
                               className="w-20 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer slider"
-                              style={{
-                                background: `linear-gradient(to right, #ea580c 0%, #ea580c ${volume}%, #4b5563 ${volume}%, #4b5563 100%)`,
-                              }}
                             />
                             <span className="text-white text-xs min-w-[2rem]">{volume}%</span>
                           </div>
@@ -1135,87 +1016,77 @@ export default function ViewerPage() {
                   )}
                 </div>
 
-                {/* Stream Details */}
-                {(isWatching || streamDetails) && (
+                {/* Video Details */}
+                {streamDetails && (
                   <div className="p-6 bg-card">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        {isLoadingStreamDetails ? (
-                          <div className="animate-pulse">
-                            <div className="h-6 bg-muted rounded mb-3 w-3/4"></div>
-                            <div className="h-4 bg-muted rounded mb-2 w-1/2"></div>
-                            <div className="h-4 bg-muted rounded mb-4 w-1/3"></div>
+                        <h1 className="text-xl font-bold mb-3">{streamDetails.title}</h1>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
+                          <span className="flex items-center gap-1">
+                            <Eye className="w-4 h-4" />
+                            {formatNumber(currentViewers)} {type === "live" ? "watching" : "views"}
+                          </span>
+                          {type === "live" ? <span>Live now</span> : <span>Recorded</span>}
+                          {streamDetails.startTime && <span>Started {formatDate(streamDetails.startTime)}</span>}
+                          <Badge
+                            variant="outline"
+                            className="border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400"
+                          >
+                            {type === "live" ? "Live Stream" : "Recorded Video"}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-3 mb-4">
+                          <Avatar className="w-10 h-10">
+                            <AvatarImage
+                              src={`https://superfan.alterwork.in/files/profilepic/${streamDetails.streamerName}.png`}
+                              alt={streamDetails.streamerName}
+                              onError={(e) => {
+                                e.currentTarget.src = "/placeholder.svg?height=40&width=40"
+                              }}
+                            />
+                            <AvatarFallback>
+                              {streamDetails.streamerName?.charAt(0)?.toUpperCase() || "S"}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium">@{streamDetails.streamerName}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {type === "live" ? "Broadcasting live" : "Content creator"}
+                            </div>
                           </div>
-                        ) : (
-                          <>
-                            <h1 className="text-xl font-bold mb-3">
-                              {streamDetails?.title || `Live Stream - Room ${roomId}`}
-                            </h1>
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
-                              <span className="flex items-center gap-1">
-                                <Eye className="w-4 h-4" />
-                                {formatNumber(currentViewers)} watching
-                              </span>
-                              <span>Live now</span>
-                              {streamDetails?.startTime && <span>Started {formatDate(streamDetails.startTime)}</span>}
-                              <Badge
-                                variant="outline"
-                                className="border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400"
-                              >
-                                Live Stream
-                              </Badge>
-                            </div>
-                            <div className="flex items-center gap-3 mb-4">
-                              <Avatar className="w-10 h-10">
-                                <AvatarImage
-                                  src={`https://superfan.alterwork.in/files/profilepic/${streamDetails?.streamerName}.png`}
-                                  alt={streamDetails?.streamerName || "Streamer"}
-                                  onError={(e) => {
-                                    e.currentTarget.src = "/placeholder.svg?height=40&width=40"
-                                  }}
-                                />
-                                <AvatarFallback>
-                                  {streamDetails?.streamerName?.charAt(0)?.toUpperCase() || "S"}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <div className="font-medium">@{streamDetails?.streamerName || "Streamer"}</div>
-                                <div className="text-sm text-muted-foreground">Broadcasting live</div>
-                              </div>
-                            </div>
+                        </div>
 
-                            {/* Description Section */}
-                            {streamDetails?.description && (
-                              <div className="mt-4">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setShowDescription(!showDescription)}
-                                  className="p-0 h-auto font-medium text-sm hover:bg-transparent"
-                                >
-                                  Description
-                                  {showDescription ? (
-                                    <ChevronUp className="w-4 h-4 ml-1" />
-                                  ) : (
-                                    <ChevronDown className="w-4 h-4 ml-1" />
-                                  )}
-                                </Button>
-                                {showDescription && (
-                                  <div className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
-                                    {streamDetails.description}
-                                  </div>
-                                )}
+                        {/* Description Section */}
+                        {streamDetails.description && (
+                          <div className="mt-4">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setShowDescription(!showDescription)}
+                              className="p-0 h-auto font-medium text-sm hover:bg-transparent"
+                            >
+                              Description
+                              {showDescription ? (
+                                <ChevronUp className="w-4 h-4 ml-1" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 ml-1" />
+                              )}
+                            </Button>
+                            {showDescription && (
+                              <div className="mt-2 text-sm text-muted-foreground whitespace-pre-wrap">
+                                {streamDetails.description}
                               </div>
                             )}
-                          </>
+                          </div>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
                         <Button
                           variant={hasLiked ? "default" : "outline"}
                           size="sm"
-                          onClick={hasLiked ? handleUnlike : handleLike} // Toggle between like and unlike
-                          disabled={isLiking || !roomId} // Disable while loading or if no room ID
+                          onClick={() => handleLike()}
+                          disabled={isLiking}
                           className={
                             hasLiked
                               ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
@@ -1223,41 +1094,16 @@ export default function ViewerPage() {
                           }
                         >
                           <Heart className={`w-4 h-4 mr-1 ${hasLiked ? "fill-current" : ""}`} />
-                          {isLiking ? (hasLiked ? "Unliking..." : "Liking...") : likes}
+                          {likes}
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
                           className="hover:bg-orange-50 dark:hover:bg-orange-950"
                           onClick={() => setShowShareModal(true)}
-                          disabled={!isWatching || !roomId}
                         >
                           <Share className="w-4 h-4 mr-1" />
                           Share
-                        </Button>
-                        <Button
-                          variant={isFollowing ? "secondary" : "default"}
-                          onClick={isFollowing ? handleUnfollow : handleFollow}
-                          disabled={
-                            isFollowingAction ||
-                            !auth.currentUser ||
-                            !streamDetails?.streamerName ||
-                            (auth.currentUser?.displayName || auth.currentUser?.email?.split("@")[0]) ===
-                              streamDetails?.streamerName
-                          }
-                          className={
-                            !isFollowing
-                              ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-                              : ""
-                          }
-                        >
-                          {isFollowingAction
-                            ? isFollowing
-                              ? "Unfollowing..."
-                              : "Following..."
-                            : isFollowing
-                              ? "Following"
-                              : "Follow"}
                         </Button>
                       </div>
                     </div>
@@ -1265,130 +1111,35 @@ export default function ViewerPage() {
                 )}
               </CardContent>
             </Card>
-
-            {/* Recommended Streams Section */}
-            <Card className="">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Recommended Streams</CardTitle>
-              </CardHeader>
-              <CardContent className="p-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                  {isLoadingSidebarStreams ? (
-                    // Loading skeleton
-                    Array.from({ length: 3 }).map((_, index) => (
-                      <div key={index} className="flex gap-3 animate-pulse">
-                        <div className="w-20 h-14 bg-muted rounded"></div>
-                        <div className="flex-1">
-                          <div className="h-3 bg-muted rounded mb-1"></div>
-                          <div className="h-2 bg-muted rounded mb-1"></div>
-                          <div className="h-2 bg-muted rounded w-1/2"></div>
-                        </div>
-                      </div>
-                    ))
-                  ) : sidebarStreams.length > 0 ? (
-                    sidebarStreams.map((stream) => (
-                      <div
-                        key={stream.sessionId}
-                        className="flex gap-3 p-2 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                        onClick={() => window.open(`/viewer?roomId=${stream.roomId}`, "_blank")}
-                      >
-                        <div className="relative">
-                          <img
-                            src={stream.thumbnail || "/placeholder.svg"}
-                            alt={stream.title}
-                            className="w-20 h-14 object-cover rounded"
-                            onLoad={(e) => {
-                              console.log("Sidebar thumbnail loaded successfully:", e.currentTarget.src)
-                            }}
-                            onError={(e) => {
-                              console.error("Sidebar thumbnail failed to load:", e.currentTarget.src)
-                              // Try the full URL first
-                              const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.hooId}.jpg` // Use hooId here
-                              if (e.currentTarget.src !== fullUrl) {
-                                console.log("Trying full sidebar URL:", fullUrl)
-                                e.currentTarget.src = fullUrl
-                              } else {
-                                // If full URL also fails, use placeholder
-                                console.log("Full sidebar URL also failed, using placeholder")
-                                e.currentTarget.src = "/placeholder.svg?height=56&width=80"
-                              }
-                            }}
-                          />
-                          <div className="absolute top-1 left-1">
-                            <Badge variant="destructive" className="text-xs px-1 py-0">
-                              LIVE
-                            </Badge>
-                          </div>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-sm line-clamp-2 mb-1">{stream.title}</h4>
-                          <p className="text-xs text-muted-foreground mb-1">{stream.streamer}</p>
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Users className="w-3 h-3" />
-                            {formatNumber(stream.viewers)}
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="col-span-full text-center py-6">
-                      <Play className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                      <p className="text-sm text-muted-foreground">No other streams available</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
           </div>
 
-          {/* Right Column - Chat */}
-          <div className="lg:col-span-1">
-            <Card className="h-[calc(100vh-120px)]">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Live Chat</CardTitle>
-              </CardHeader>
-              <CardContent className="p-0 h-[calc(100%-70px)]">
-                <LiveChat
-                  roomId={roomId}
-                  currentUserDisplayName={currentUserDisplayName}
-                  enableChat={isChatEnabled}
-                  isBlocked={isBlockedByStreamer} // Pass the new prop
-                />
-              </CardContent>
-            </Card>
-          </div>
+          {/* Right Column - Chat (only for live streams) */}
+          {type === "live" && (
+            <div className="lg:col-span-1">
+              <Card className="h-[calc(100vh-120px)]">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Live Chat</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 h-[calc(100%-70px)]">
+                  <LiveChat
+                    roomId={actualRoomId || ""}
+                    currentUserDisplayName={currentUserDisplayName}
+                    enableChat={isChatEnabled}
+                    isBlocked={isBlockedByStreamer}
+                  />
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </div>
 
       <ShareModal
         open={showShareModal}
         onOpenChange={setShowShareModal}
-        streamUrl={getStreamUrl()}
-        streamTitle={streamDetails?.title || `Live Stream - Room ${roomId}`}
+        streamUrl={getShareUrl()}
+        streamTitle={streamDetails?.title || "Video"}
       />
-
-      <style jsx>{`
-        .slider::-webkit-slider-thumb {
-          appearance: none;
-          height: 12px;
-          width: 12px;
-          border-radius: 50%;
-          background: #ea580c;
-          cursor: pointer;
-          border: 2px solid #ffffff;
-          box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
-        }
-
-        .slider::-moz-range-thumb {
-          height: 12px;
-          width: 12px;
-          border-radius: 50%;
-          background: #ea580c;
-          cursor: pointer;
-          border: 2px solid #ffffff;
-          box-shadow: 0 0 2px rgba(0, 0, 0, 0.3);
-        }
-      `}</style>
     </div>
   )
 }
