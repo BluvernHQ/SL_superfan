@@ -123,6 +123,10 @@ export default function ViewerPage() {
   const [sidebarStreams, setSidebarStreams] = useState<any[]>([])
   const [isLoadingSidebarStreams, setIsLoadingSidebarStreams] = useState(true)
 
+  // Sidebar live streams (only for storage videos)
+  const [sidebarLiveStreams, setSidebarLiveStreams] = useState<any[]>([])
+  const [isLoadingSidebarLiveStreams, setIsLoadingSidebarLiveStreams] = useState(false)
+
   // WebRTC refs (only for live streams)
   const remoteVideosRef = useRef<HTMLDivElement>(null)
   const janusSessionIdRef = useRef<string | null>(null)
@@ -256,6 +260,37 @@ export default function ViewerPage() {
       console.error("Error fetching stream details:", error)
     } finally {
       setIsLoadingStreamDetails(false)
+    }
+  }
+
+  // Fetch live streams for sidebar (only for storage videos)
+  const fetchSidebarLiveStreams = async () => {
+    if (type !== "storage") return // Only fetch for storage videos
+
+    try {
+      setIsLoadingSidebarLiveStreams(true)
+      const headers = await getAuthHeaders()
+
+      const response = await fetch("https://superfan.alterwork.in/api/get_live", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            username: "all",
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (Array.isArray(data.user)) {
+          setSidebarLiveStreams(data.user)
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching sidebar live streams:", error)
+    } finally {
+      setIsLoadingSidebarLiveStreams(false)
     }
   }
 
@@ -897,6 +932,13 @@ export default function ViewerPage() {
     }
   }, [streamDetails?.streamerName, currentUserDisplayName])
 
+  // Fetch sidebar live streams for storage videos
+  useEffect(() => {
+    if (type === "storage") {
+      fetchSidebarLiveStreams()
+    }
+  }, [type])
+
   const formatNumber = (num: number) => {
     if (num >= 1000000) return (num / 1000000).toFixed(1) + "M"
     if (num >= 1000) return (num / 1000).toFixed(1) + "K"
@@ -927,7 +969,7 @@ export default function ViewerPage() {
       <Navigation />
 
       <div className="container mx-auto p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className={`grid ${type === "live" ? "grid-cols-1 lg:grid-cols-4" : "grid-cols-1 lg:grid-cols-4"} gap-6`}>
           {/* Main Content Column */}
           <div className="lg:col-span-3 flex flex-col gap-4">
             {/* Back Button */}
@@ -1113,8 +1155,8 @@ export default function ViewerPage() {
             </Card>
           </div>
 
-          {/* Right Column - Chat (only for live streams) */}
-          {type === "live" && (
+          {/* Right Column - Chat for live streams, Live Videos for storage */}
+          {type === "live" ? (
             <div className="lg:col-span-1">
               <Card className="h-[calc(100vh-120px)]">
                 <CardHeader className="pb-3">
@@ -1127,6 +1169,69 @@ export default function ViewerPage() {
                     enableChat={isChatEnabled}
                     isBlocked={isBlockedByStreamer}
                   />
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <div className="lg:col-span-1">
+              <Card className="h-[calc(100vh-120px)]">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">Live Now</CardTitle>
+                </CardHeader>
+                <CardContent className="p-4 h-[calc(100%-70px)] overflow-y-auto">
+                  {isLoadingSidebarLiveStreams ? (
+                    <div className="space-y-4">
+                      {Array.from({ length: 3 }).map((_, index) => (
+                        <div key={index} className="animate-pulse">
+                          <div className="w-full h-24 bg-muted rounded mb-2"></div>
+                          <div className="h-4 bg-muted rounded mb-1 w-3/4"></div>
+                          <div className="h-3 bg-muted rounded w-1/2"></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : sidebarLiveStreams.length > 0 ? (
+                    <div className="space-y-4">
+                      {sidebarLiveStreams.map((stream) => (
+                        <div
+                          key={stream.room_id}
+                          className="cursor-pointer hover:bg-muted/50 rounded-lg p-2 transition-colors"
+                          onClick={() => {
+                            router.push(`/viewer?type=live&roomId=${stream.room_id}&hookId=${stream.hookId}`)
+                          }}
+                        >
+                          <div className="relative w-full h-24 bg-black rounded mb-2 overflow-hidden">
+                            <img
+                              src={stream.thumbnail || "/placeholder.svg?height=96&width=160&query=live-stream"}
+                              alt={stream.title || stream.description}
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.currentTarget.src = "/placeholder.svg?height=96&width=160"
+                              }}
+                            />
+                            <div className="absolute top-1 left-1">
+                              <Badge variant="destructive" className="text-xs">
+                                <div className="w-1.5 h-1.5 bg-white rounded-full mr-1 animate-pulse"></div>
+                                LIVE
+                              </Badge>
+                            </div>
+                          </div>
+                          <h3 className="font-medium text-sm line-clamp-2 mb-1">
+                            {stream.title || stream.description || `Live Stream - Room ${stream.room_id}`}
+                          </h3>
+                          <p className="text-xs text-muted-foreground mb-1">@{stream.name}</p>
+                          <div className="flex items-center text-xs text-muted-foreground">
+                            <Eye className="w-3 h-3 mr-1" />
+                            {stream.viewers || 0} watching
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center text-muted-foreground py-8">
+                      <div className="text-4xl mb-2">📺</div>
+                      <p className="text-sm">No live streams right now</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

@@ -334,10 +334,10 @@ export default function HomePage() {
               {isLoadingStreams ? (
                 Array.from({ length: 3 }).map((_, index) => (
                   <Card key={index} className="animate-pulse">
-                    <div className="w-full h-48 bg-muted rounded-t-lg"></div>
-                    <CardContent className="p-4">
-                      <div className="h-4 bg-muted rounded mb-2"></div>
-                      <div className="h-3 bg-muted rounded"></div>
+                    <div className="w-full h-24 bg-muted rounded-t-lg"></div>
+                    <CardContent className="p-2">
+                      <div className="h-3 bg-muted rounded mb-1"></div>
+                      <div className="h-2 bg-muted rounded"></div>
                     </CardContent>
                   </Card>
                 ))
@@ -348,13 +348,13 @@ export default function HomePage() {
                       <img
                         src={stream.thumbnail || "/placeholder.svg"}
                         alt={stream.title}
-                        className="w-full h-48 object-cover rounded-t-lg"
+                        className="w-full h-24 object-cover rounded-t-lg"
                         onError={(e) => {
                           const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.hookId}.jpg`
                           if (e.currentTarget.src !== fullUrl) {
                             e.currentTarget.src = fullUrl
                           } else {
-                            e.currentTarget.src = "/placeholder.svg?height=192&width=320"
+                            e.currentTarget.src = "/placeholder.svg?height=96&width=320"
                           }
                         }}
                       />
@@ -367,12 +367,12 @@ export default function HomePage() {
                         {stream.viewers}
                       </Badge>
                     </div>
-                    <CardContent className="p-4">
-                      <h3 className="font-semibold mb-1">{stream.title}</h3>
-                      <p className="text-sm text-muted-foreground">{stream.streamer}</p>
+                    <CardContent className="p-2">
+                      <h3 className="font-semibold mb-1 text-xs">{stream.title}</h3>
+                      <p className="text-[10px] text-muted-foreground">{stream.streamer}</p>
                       <Button
                         size="sm"
-                        className="mt-2 w-full"
+                        className="mt-1 w-full text-[10px]"
                         onClick={() => window.open(`/viewer?roomId=${stream.UID}&hookId=${stream.hookId}`, "_blank")}
                       >
                         Watch Stream

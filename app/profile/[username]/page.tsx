@@ -175,9 +175,24 @@ export default function ProfilePage({ params }: { params: { username: string } }
             title: rec.title || `Recording from ${rec.start ? rec.start.split("T")[0] : "Unknown Date"}`,
             views: rec.maxviews || 0,
             date: formatDate(rec.start),
+            timestamp: rec.start, // Keep original timestamp for sorting
             thumbnail: `https://superfan.alterwork.in/files/thumbnails/${rec.hookId}.jpg`,
           }))
-          transformedRecordings.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+          // Sort by timestamp (latest first) - handle both valid dates and invalid/null dates
+          transformedRecordings.sort((a: any, b: any) => {
+            const dateA = a.timestamp ? new Date(a.timestamp).getTime() : 0
+            const dateB = b.timestamp ? new Date(b.timestamp).getTime() : 0
+
+            // If both dates are invalid, maintain original order
+            if (dateA === 0 && dateB === 0) return 0
+            // If one date is invalid, put it at the end
+            if (dateA === 0) return 1
+            if (dateB === 0) return -1
+            // Sort valid dates in descending order (latest first)
+            return dateB - dateA
+          })
+
           setPastRecordings(transformedRecordings)
         } else {
           console.warn("Unexpected response format for /get_rec:", data)
