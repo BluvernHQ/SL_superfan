@@ -147,20 +147,13 @@ export function ProfileTabs({
     }
   }
 
-  const getTabCount = () => {
-    if (isOwnProfile) {
-      return 4 // home, followers, following, blocklist
-    } else {
-      return 1 // only home
-    }
-  }
-
   console.log("ProfileTabs - isOwnProfile:", isOwnProfile)
 
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
       <div className="flex justify-center mb-6">
-        <TabsList className={`grid w-full max-w-2xl grid-cols-${getTabCount()}`}>
+        {/* Fixed horizontal layout using flex instead of dynamic grid */}
+        <TabsList className="flex w-auto gap-1 p-1">
           <TabsTrigger value="home">Home</TabsTrigger>
           {isOwnProfile && <TabsTrigger value="followers">Followers</TabsTrigger>}
           {isOwnProfile && <TabsTrigger value="following">Following</TabsTrigger>}
