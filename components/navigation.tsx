@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Play, User, LogOut, ChevronDown, Camera } from "lucide-react"
+import { Play, User, LogOut, ChevronDown, Camera, Menu } from "lucide-react"
 import Link from "next/link"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, signOut } from "firebase/auth"
@@ -28,6 +28,7 @@ interface NavigationProps {
 export function Navigation({ allUsers, isLoadingUsers }: NavigationProps) {
   const [user, setUser] = useState<any>(null)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -59,6 +60,7 @@ export function Navigation({ allUsers, isLoadingUsers }: NavigationProps) {
     try {
       await signOut(auth)
       setIsDropdownOpen(false)
+      setIsMobileMenuOpen(false)
       router.push("/login")
     } catch (error) {
       console.error("Error signing out:", error)
@@ -78,10 +80,12 @@ export function Navigation({ allUsers, isLoadingUsers }: NavigationProps) {
 
   const handleProfileClick = (path: string) => {
     setIsDropdownOpen(false)
+    setIsMobileMenuOpen(false)
     router.push(path)
   }
 
   const handleStartLive = () => {
+    setIsMobileMenuOpen(false)
     if (user) {
       router.push("/streamer")
     } else {
@@ -91,42 +95,43 @@ export function Navigation({ allUsers, isLoadingUsers }: NavigationProps) {
 
   return (
     <nav className="border-b bg-background/95 backdrop-blur sticky top-0 z-50">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
+      <div className="container mx-auto px-2 sm:px-4">
+        <div className="flex items-center justify-between h-14 sm:h-16">
           {/* Logo - Top Left */}
           <Link href="/" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-r from-orange-600 to-orange-500 rounded-lg flex items-center justify-center">
-              <Play className="w-5 h-5 text-white" />
+            <div className="w-6 sm:w-8 h-6 sm:h-8 bg-gradient-to-r from-orange-600 to-orange-500 rounded-lg flex items-center justify-center">
+              <Play className="w-3 sm:w-5 h-3 sm:h-5 text-white" />
             </div>
-            <span className="font-bold text-xl bg-gradient-to-r from-orange-600 to-orange-500 bg-clip-text text-transparent">
+            <span className="font-bold text-lg sm:text-xl bg-gradient-to-r from-orange-600 to-orange-500 bg-clip-text text-transparent">
               Superfan
             </span>
           </Link>
 
-          {/* Search Bar - Centered and takes available space */}
+          {/* Search Bar - Centered and takes available space (hidden on mobile) */}
           <div className="hidden md:flex items-center flex-1 max-w-md mx-8">
             <UserSearch users={allUsers} isLoading={isLoadingUsers} /> {/* Pass users and loading state */}
           </div>
 
-          {/* User Menu and Create Button - Aligned to the right */}
-          <div className="flex items-center space-x-4">
+          {/* Desktop Menu */}
+          <div className="hidden sm:flex items-center space-x-3 sm:space-x-4">
             <Button
               size="sm"
               onClick={handleStartLive}
               className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
             >
-              <Camera className="mr-2 h-4 w-4" />
-              Start Stream
+              <Camera className="mr-1 sm:mr-2 h-3 sm:h-4 w-3 sm:w-4" />
+              <span className="hidden sm:inline">Start Stream</span>
+              <span className="sm:hidden">Stream</span>
             </Button>
 
             {user ? (
               <div className="relative user-dropdown">
                 <Button
                   variant="ghost"
-                  className="relative h-10 w-auto rounded-full hover:bg-accent px-2 flex items-center gap-2"
+                  className="relative h-8 sm:h-10 w-auto rounded-full hover:bg-accent px-2 flex items-center gap-2"
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 >
-                  <Avatar className="h-8 w-8">
+                  <Avatar className="h-6 sm:h-8 w-6 sm:w-8">
                     <AvatarImage
                       src={`https://superfan.alterwork.in/files/profilepic/${getUserDisplayName()}.png`}
                       alt="User"
@@ -136,7 +141,9 @@ export function Navigation({ allUsers, isLoadingUsers }: NavigationProps) {
                     />
                     <AvatarFallback>{getUserInitials()}</AvatarFallback>
                   </Avatar>
-                  <ChevronDown className={`h-4 w-4 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`} />
+                  <ChevronDown
+                    className={`h-3 sm:h-4 w-3 sm:w-4 transition-transform ${isDropdownOpen ? "rotate-180" : ""}`}
+                  />
                 </Button>
 
                 {/* Custom Dropdown */}
@@ -174,12 +181,90 @@ export function Navigation({ allUsers, isLoadingUsers }: NavigationProps) {
                 )}
               </div>
             ) : (
-              <Button asChild className="bg-gradient-to-r from-orange-600 to-orange-500">
+              <Button asChild className="bg-gradient-to-r from-orange-600 to-orange-500" size="sm">
                 <Link href="/login">Sign In</Link>
               </Button>
             )}
           </div>
+
+          {/* Mobile Menu Button */}
+          <div className="sm:hidden">
+            <Button variant="ghost" size="sm" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2">
+              <Menu className="h-5 w-5" />
+            </Button>
+          </div>
         </div>
+
+        {/* Mobile Menu */}
+        {isMobileMenuOpen && (
+          <div className="sm:hidden border-t border-border bg-background">
+            <div className="px-2 py-3 space-y-3">
+              {/* Mobile Search */}
+              <div className="w-full">
+                <UserSearch users={allUsers} isLoading={isLoadingUsers} />
+              </div>
+
+              {/* Mobile Actions */}
+              <div className="flex flex-col space-y-2">
+                <Button
+                  size="sm"
+                  onClick={handleStartLive}
+                  className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 w-full justify-start"
+                >
+                  <Camera className="mr-2 h-4 w-4" />
+                  Start Stream
+                </Button>
+
+                {user ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleProfileClick(`/profile/${getUserDisplayName()}`)}
+                      className="w-full justify-start"
+                    >
+                      <User className="mr-2 h-4 w-4" />
+                      View Profile
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleSignOut}
+                      className="w-full justify-start text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Log out
+                    </Button>
+                  </>
+                ) : (
+                  <Button asChild className="bg-gradient-to-r from-orange-600 to-orange-500 w-full" size="sm">
+                    <Link href="/login">Sign In</Link>
+                  </Button>
+                )}
+              </div>
+
+              {/* User Info (if logged in) */}
+              {user && (
+                <div className="flex items-center gap-3 pt-2 border-t border-border">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage
+                      src={`https://superfan.alterwork.in/files/profilepic/${getUserDisplayName()}.png`}
+                      alt="User"
+                      onError={(e) => {
+                        e.currentTarget.src = "/placeholder.svg?height=32&width=32"
+                      }}
+                    />
+                    <AvatarFallback>{getUserInitials()}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex flex-col">
+                    <p className="font-medium text-sm">@{getUserDisplayName()}</p>
+                    <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </nav>
   )

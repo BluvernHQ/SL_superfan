@@ -968,12 +968,25 @@ export default function ViewerPage() {
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container mx-auto p-4">
-        <div className={`grid ${type === "live" ? "grid-cols-1 lg:grid-cols-4" : "grid-cols-1 lg:grid-cols-4"} gap-6`}>
+      <div className="container mx-auto p-2 sm:p-4">
+        <div
+          className={`grid ${type === "live" ? "grid-cols-1 lg:grid-cols-4" : "grid-cols-1 lg:grid-cols-4"} gap-3 sm:gap-6`}
+        >
           {/* Main Content Column */}
-          <div className="lg:col-span-3 flex flex-col gap-4">
+          <div className="lg:col-span-3 flex flex-col gap-3 sm:gap-4">
             {/* Back Button */}
-            <Button variant="ghost" size="sm" onClick={() => router.back()} className="self-start">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (streamDetails?.streamerName) {
+                  router.push(`/profile/${streamDetails.streamerName}`)
+                } else {
+                  router.back()
+                }
+              }}
+              className="self-start"
+            >
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
@@ -1022,15 +1035,15 @@ export default function ViewerPage() {
                   {/* Video Overlays */}
                   {type === "live" && isWatching && (
                     <>
-                      <div className="absolute top-4 left-4">
-                        <Badge variant="destructive" className="text-sm">
+                      <div className="absolute top-2 sm:top-4 left-2 sm:left-4">
+                        <Badge variant="destructive" className="text-xs sm:text-sm">
                           <div className="w-2 h-2 bg-white rounded-full mr-2 animate-pulse"></div>
                           LIVE
                         </Badge>
                       </div>
 
                       {/* Audio Controls for live streams */}
-                      <div className="absolute bottom-4 right-4 flex items-center gap-2">
+                      <div className="absolute bottom-2 sm:bottom-4 right-2 sm:right-4 flex items-center gap-2">
                         <Button
                           variant="secondary"
                           size="sm"
@@ -1041,7 +1054,7 @@ export default function ViewerPage() {
                         </Button>
 
                         {!isAudioMuted && (
-                          <div className="flex items-center gap-2 bg-black/70 rounded px-2 py-1">
+                          <div className="hidden sm:flex items-center gap-2 bg-black/70 rounded px-2 py-1">
                             <input
                               type="range"
                               min="0"
@@ -1060,17 +1073,19 @@ export default function ViewerPage() {
 
                 {/* Video Details */}
                 {streamDetails && (
-                  <div className="p-6 bg-card">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h1 className="text-xl font-bold mb-3">{streamDetails.title}</h1>
-                        <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
+                  <div className="p-3 sm:p-6 bg-card">
+                    <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+                      <div className="flex-1 w-full">
+                        <h1 className="text-lg sm:text-xl font-bold mb-3">{streamDetails.title}</h1>
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground mb-4">
                           <span className="flex items-center gap-1">
-                            <Eye className="w-4 h-4" />
+                            <Eye className="w-3 sm:w-4 h-3 sm:h-4" />
                             {formatNumber(currentViewers)} {type === "live" ? "watching" : "views"}
                           </span>
                           {type === "live" ? <span>Live now</span> : <span>Recorded</span>}
-                          {streamDetails.startTime && <span>Started {formatDate(streamDetails.startTime)}</span>}
+                          {streamDetails.startTime && (
+                            <span className="hidden sm:inline">Started {formatDate(streamDetails.startTime)}</span>
+                          )}
                           <Badge
                             variant="outline"
                             className="border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400"
@@ -1079,7 +1094,7 @@ export default function ViewerPage() {
                           </Badge>
                         </div>
                         <div className="flex items-center gap-3 mb-4">
-                          <Avatar className="w-10 h-10">
+                          <Avatar className="w-8 sm:w-10 h-8 sm:h-10">
                             <AvatarImage
                               src={`https://superfan.alterwork.in/files/profilepic/${streamDetails.streamerName}.png`}
                               alt={streamDetails.streamerName}
@@ -1092,8 +1107,8 @@ export default function ViewerPage() {
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="font-medium">@{streamDetails.streamerName}</div>
-                            <div className="text-sm text-muted-foreground">
+                            <div className="font-medium text-sm sm:text-base">@{streamDetails.streamerName}</div>
+                            <div className="text-xs sm:text-sm text-muted-foreground">
                               {type === "live" ? "Broadcasting live" : "Content creator"}
                             </div>
                           </div>
@@ -1123,7 +1138,7 @@ export default function ViewerPage() {
                           </div>
                         )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
                         <Button
                           variant={hasLiked ? "default" : "outline"}
                           size="sm"
@@ -1131,8 +1146,8 @@ export default function ViewerPage() {
                           disabled={isLiking}
                           className={
                             hasLiked
-                              ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-                              : "hover:bg-orange-50 dark:hover:bg-orange-950"
+                              ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600 flex-1 sm:flex-none"
+                              : "hover:bg-orange-50 dark:hover:bg-orange-950 flex-1 sm:flex-none"
                           }
                         >
                           <Heart className={`w-4 h-4 mr-1 ${hasLiked ? "fill-current" : ""}`} />
@@ -1141,7 +1156,7 @@ export default function ViewerPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          className="hover:bg-orange-50 dark:hover:bg-orange-950"
+                          className="hover:bg-orange-50 dark:hover:bg-orange-950 flex-1 sm:flex-none"
                           onClick={() => setShowShareModal(true)}
                         >
                           <Share className="w-4 h-4 mr-1" />
@@ -1158,11 +1173,11 @@ export default function ViewerPage() {
           {/* Right Column - Chat for live streams, Live Videos for storage */}
           {type === "live" ? (
             <div className="lg:col-span-1">
-              <Card className="h-[calc(100vh-120px)]">
+              <Card className="min-h-[300px] max-h-[60vh] lg:min-h-[400px] lg:max-h-[calc(100vh-120px)] flex flex-col">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">Live Chat</CardTitle>
+                  <CardTitle className="text-base sm:text-lg">Live Chat</CardTitle>
                 </CardHeader>
-                <CardContent className="p-0 h-[calc(100%-70px)]">
+                <CardContent className="p-0 flex-1">
                   <LiveChat
                     roomId={actualRoomId || ""}
                     currentUserDisplayName={currentUserDisplayName}
@@ -1174,23 +1189,23 @@ export default function ViewerPage() {
             </div>
           ) : (
             <div className="lg:col-span-1">
-              <Card className="h-[calc(100vh-120px)]">
+              <Card className="min-h-[300px] max-h-[60vh] lg:min-h-[400px] lg:max-h-[calc(100vh-120px)] flex flex-col">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">Live Now</CardTitle>
+                  <CardTitle className="text-base sm:text-lg">Live Now</CardTitle>
                 </CardHeader>
-                <CardContent className="p-4 h-[calc(100%-70px)] overflow-y-auto">
+                <CardContent className="p-2 sm:p-4 flex-1 overflow-y-auto">
                   {isLoadingSidebarLiveStreams ? (
-                    <div className="space-y-4">
+                    <div className="space-y-3 sm:space-y-4">
                       {Array.from({ length: 3 }).map((_, index) => (
                         <div key={index} className="animate-pulse">
-                          <div className="w-full h-24 bg-muted rounded mb-2"></div>
-                          <div className="h-4 bg-muted rounded mb-1 w-3/4"></div>
-                          <div className="h-3 bg-muted rounded w-1/2"></div>
+                          <div className="w-full h-16 sm:h-24 bg-muted rounded mb-2"></div>
+                          <div className="h-3 sm:h-4 bg-muted rounded mb-1 w-3/4"></div>
+                          <div className="h-2 sm:h-3 bg-muted rounded w-1/2"></div>
                         </div>
                       ))}
                     </div>
                   ) : sidebarLiveStreams.length > 0 ? (
-                    <div className="space-y-4">
+                    <div className="space-y-3 sm:space-y-4">
                       {sidebarLiveStreams.map((stream) => (
                         <div
                           key={stream.room_id}
@@ -1199,7 +1214,7 @@ export default function ViewerPage() {
                             router.push(`/viewer?type=live&roomId=${stream.room_id}&hookId=${stream.hookId}`)
                           }}
                         >
-                          <div className="relative w-full h-24 bg-black rounded mb-2 overflow-hidden">
+                          <div className="relative w-full h-16 sm:h-24 bg-black rounded mb-2 overflow-hidden">
                             <img
                               src={stream.thumbnail || "/placeholder.svg?height=96&width=160&query=live-stream"}
                               alt={stream.title || stream.description}
@@ -1215,7 +1230,7 @@ export default function ViewerPage() {
                               </Badge>
                             </div>
                           </div>
-                          <h3 className="font-medium text-sm line-clamp-2 mb-1">
+                          <h3 className="font-medium text-xs sm:text-sm line-clamp-2 mb-1">
                             {stream.title || stream.description || `Live Stream - Room ${stream.room_id}`}
                           </h3>
                           <p className="text-xs text-muted-foreground mb-1">@{stream.name}</p>
@@ -1227,9 +1242,9 @@ export default function ViewerPage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center text-muted-foreground py-8">
-                      <div className="text-4xl mb-2">📺</div>
-                      <p className="text-sm">No live streams right now</p>
+                    <div className="text-center text-muted-foreground py-6 sm:py-8">
+                      <div className="text-2xl sm:text-4xl mb-2">📺</div>
+                      <p className="text-xs sm:text-sm">No live streams right now</p>
                     </div>
                   )}
                 </CardContent>

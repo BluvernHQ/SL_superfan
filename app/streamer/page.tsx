@@ -1177,51 +1177,59 @@ export default function StreamerPage() {
             {/* Stream Info - Only show when streaming */}
             {isStreaming && (
               <Card>
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
+                <CardContent className="p-4 sm:p-6">
+                  <div className="flex flex-col space-y-4">
                     <div className="flex-1">
-                      <h1 className="text-xl font-bold mb-3">{title}</h1>
-                      {description && <p className="text-muted-foreground mb-4">{description}</p>}
+                      <h1 className="text-lg sm:text-xl font-bold mb-3">{title}</h1>
+                      {description && <p className="text-muted-foreground mb-4 text-sm sm:text-base">{description}</p>}
                       {tags.length > 0 && (
                         <div className="flex flex-wrap gap-2 mb-4">
                           {tags.map((tag) => (
-                            <Badge key={tag} variant="outline">
+                            <Badge key={tag} variant="outline" className="text-xs">
                               {tag}
                             </Badge>
                           ))}
                         </div>
                       )}
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground mb-4">
                         <span className="flex items-center gap-1">
-                          <Users className="w-4 h-4" />
+                          <Users className="w-3 sm:w-4 h-3 sm:h-4" />
                           {formatNumber(viewers)} watching
                         </span>
                         <span>Duration: {streamDuration}</span>
-                        <Badge variant="destructive" className="animate-pulse">
+                        <Badge variant="destructive" className="animate-pulse text-xs">
                           <div className="w-2 h-2 bg-white rounded-full mr-1"></div>
                           LIVE
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-10 w-10">
+                      <div className="flex items-center gap-3 mb-4 sm:mb-0">
+                        <Avatar className="h-8 sm:h-10 w-8 sm:w-10">
                           <AvatarImage src="/placeholder.svg" alt="Channel" />
                           <AvatarFallback>@</AvatarFallback>
                         </Avatar>
                         <div>
-                          <div className="font-medium">@{getUserDisplayName()}</div>
-                          <div className="text-sm text-muted-foreground">Broadcasting live</div>
+                          <div className="font-medium text-sm sm:text-base">@{getUserDisplayName()}</div>
+                          <div className="text-xs sm:text-sm text-muted-foreground">Broadcasting live</div>
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Button onClick={stopStreamingCleanup} variant="destructive">
+
+                    {/* Mobile-responsive button layout */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2 sm:justify-end">
+                      <Button
+                        onClick={stopStreamingCleanup}
+                        variant="destructive"
+                        size="sm"
+                        className="w-full sm:w-auto"
+                      >
                         <Square className="h-4 w-4 mr-2" />
                         Stop Stream
                       </Button>
                       <Button
                         onClick={() => setShowShareModal(true)}
                         variant="outline"
-                        className="hover:bg-orange-50 dark:hover:bg-orange-950"
+                        size="sm"
+                        className="hover:bg-orange-50 dark:hover:bg-orange-950 w-full sm:w-auto"
                       >
                         <Share className="h-4 w-4 mr-2" />
                         Share
@@ -1235,11 +1243,11 @@ export default function StreamerPage() {
 
           {/* Chat Section */}
           <div>
-            <Card className="h-[600px]">
+            <Card className="min-h-[400px] max-h-[80vh] lg:h-[600px] flex flex-col">
               <CardHeader>
                 <CardTitle className="text-lg">Live Chat</CardTitle>
               </CardHeader>
-              <CardContent className="p-0 h-[calc(100%-70px)]">
+              <CardContent className="p-0 flex-1">
                 <LiveChat
                   roomId={createdRoomId}
                   currentUserDisplayName={currentUserDisplayName}

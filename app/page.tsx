@@ -13,10 +13,10 @@ import { onAuthStateChanged } from "firebase/auth"
 import { useRouter } from "next/navigation"
 import { VideoCarousel } from "@/components/video-carousel"
 import { UserCarousel } from "@/components/user-carousel"
-import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar"
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 
-/* Helper: show "Discover Users" only when the sidebar is not visible (mobile) */
+/* Helper: show "Discover Users" only on mobile screens */
 function DiscoverUsersSection({
   users,
   isLoading,
@@ -26,7 +26,29 @@ function DiscoverUsersSection({
   isLoading: boolean
   currentLoggedInUser?: string
 }) {
-  const { isMobile } = useSidebar()
+  const [isMobile, setIsMobile] = useState(false)
+  const [isClient, setIsClient] = useState(false)
+
+  useEffect(() => {
+    // Set client-side flag
+    setIsClient(true)
+
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768) // md breakpoint
+    }
+
+    // Check immediately
+    checkMobile()
+
+    window.addEventListener("resize", checkMobile)
+    return () => window.removeEventListener("resize", checkMobile)
+  }, [])
+
+  // Don't render anything until we're on the client and know the screen size
+  if (!isClient) {
+    return null
+  }
+
   if (!isMobile) return null
 
   return (
@@ -296,14 +318,14 @@ export default function HomePage() {
       <SidebarProvider>
         <AppSidebar users={allUsers} isLoading={isLoadingUsers} />
         <SidebarInset>
-          <main className="container mx-auto px-4 py-8">
+          <main className="container mx-auto px-2 sm:px-4 py-4 sm:py-8">
             {/* Live Now Section */}
-            <h2 className="text-2xl font-bold mb-4">Live Now</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            <h2 className="text-xl sm:text-2xl font-bold mb-4">Live Now</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
               {isLoadingStreams && !hasLoadedStreamsInitially ? (
                 Array.from({ length: 3 }).map((_, index) => (
                   <Card key={index} className="animate-pulse">
-                    <div className="w-full h-24 bg-muted rounded-t-lg"></div>
+                    <div className="w-full h-20 sm:h-24 bg-muted rounded-t-lg"></div>
                     <CardContent className="p-2">
                       <div className="h-3 bg-muted rounded mb-1"></div>
                       <div className="h-2 bg-muted rounded"></div>
@@ -343,7 +365,7 @@ export default function HomePage() {
                         <img
                           src={stream.thumbnail || "/placeholder.svg"}
                           alt={stream.title}
-                          className="w-full h-24 object-cover rounded-t-lg"
+                          className="w-full h-20 sm:h-24 object-cover rounded-t-lg"
                           onError={(e) => {
                             const fullUrl = `https://superfan.alterwork.in/files/thumbnails/${stream.hookId}.jpg`
                             if (e.currentTarget.src !== fullUrl) {
@@ -353,21 +375,21 @@ export default function HomePage() {
                             }
                           }}
                         />
-                        <Badge variant="destructive" className="absolute top-2 left-2 text-xs">
+                        <Badge variant="destructive" className="absolute top-1 sm:top-2 left-1 sm:left-2 text-xs">
                           <div className="w-1.5 h-1.5 bg-white rounded-full mr-1"></div>
                           LIVE
                         </Badge>
-                        <Badge variant="secondary" className="absolute top-2 right-2 text-xs">
+                        <Badge variant="secondary" className="absolute top-1 sm:top-2 right-1 sm:right-2 text-xs">
                           <Users className="w-3 h-3 mr-1" />
                           {stream.viewers}
                         </Badge>
                       </div>
                       <CardContent className="p-2">
-                        <h3 className="font-semibold mb-1 text-xs">{stream.title}</h3>
-                        <p className="text-[10px] text-muted-foreground">{stream.streamer}</p>
+                        <h3 className="font-semibold mb-1 text-xs sm:text-sm line-clamp-2">{stream.title}</h3>
+                        <p className="text-[10px] sm:text-xs text-muted-foreground mb-1">{stream.streamer}</p>
                         <Button
                           size="sm"
-                          className="mt-1 w-full text-[10px]"
+                          className="mt-1 w-full text-[10px] sm:text-xs h-6 sm:h-8"
                           onClick={() => window.open(`/viewer?roomId=${stream.UID}&hookId=${stream.hookId}`, "_blank")}
                         >
                           Watch Stream
@@ -377,12 +399,13 @@ export default function HomePage() {
                   </div>
                 ))
               ) : (
-                <div className="col-span-full text-center py-8">
+                <div className="col-span-full text-center py-6 sm:py-8">
                   <p className="text-muted-foreground mb-4">No live streams right now.</p>
                   {user && (
                     <Button
                       onClick={() => router.push("/streamer")}
                       className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                      size="sm"
                     >
                       <Camera className="mr-2 h-4 w-4" />
                       Go Live Now!

@@ -10,6 +10,7 @@ import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, getIdToken } from "firebase/auth"
 import { useRouter } from "next/navigation"
 import { ProfileTabs } from "@/components/profile-tabs"
+import { EditProfileModal } from "@/components/edit-profile-modal"
 
 interface UserProfileData {
   UID: string
@@ -44,6 +45,9 @@ export default function ProfilePage({ params }: { params: { username: string } }
   const [followingList, setFollowingList] = useState<string[]>([])
   const [isLoadingFollowers, setIsLoadingFollowers] = useState(false)
   const [isLoadingFollowing, setIsLoadingFollowing] = useState(false)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [aboutData, setAboutData] = useState<any>(null)
+  const [isLoadingAbout, setIsLoadingAbout] = useState(true)
 
   const getAuthHeaders = async () => {
     const headers: Record<string, string> = {
@@ -128,11 +132,42 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
   }
 
+  const fetchAboutDetails = async () => {
+    setIsLoadingAbout(true)
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/get_about", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            username: params.username,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Fetched about data:", data)
+        setAboutData(data.about)
+      } else {
+        console.error("Failed to fetch about details:", response.status, response.statusText)
+        setAboutData(null)
+      }
+    } catch (error) {
+      console.error("Error fetching about details:", error)
+      setAboutData(null)
+    } finally {
+      setIsLoadingAbout(false)
+    }
+  }
+
   // Fetch user details when auth is loaded and we have the username
   useEffect(() => {
     if (authLoaded && params.username) {
       fetchUserDetails()
       fetchPastRecordings()
+      fetchAboutDetails()
     }
   }, [authLoaded, params.username])
 
@@ -620,10 +655,19 @@ export default function ProfilePage({ params }: { params: { username: string } }
     setFollowingList([])
     setIsLoadingFollowers(false)
     setIsLoadingFollowing(false)
+    setAboutData(null)
+    setIsLoadingAbout(true)
   }, [params.username])
 
   const handleEditProfile = () => {
-    alert("Edit Profile functionality coming soon!")
+    setIsEditModalOpen(true)
+  }
+
+  const handleSaveProfile = (updatedData: Partial<UserProfileData>) => {
+    // For now, just update the local state
+    // Later we can add API call here
+    setProfileData((prev) => (prev ? { ...prev, ...updatedData } : null))
+    console.log("Profile updated:", updatedData)
   }
 
   const handleEditPanels = () => {
@@ -640,9 +684,9 @@ export default function ProfilePage({ params }: { params: { username: string } }
     <div className="min-h-screen bg-background">
       <Navigation />
 
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6">
         {/* Channel Header */}
-        <div className="relative w-full h-48 md:h-64 rounded-lg mb-6 overflow-hidden">
+        <div className="relative w-full h-32 sm:h-48 md:h-64 rounded-lg mb-4 sm:mb-6 overflow-hidden">
           {/* Blurred profile picture as banner image */}
           <img
             src={`https://superfan.alterwork.in/files/profilepic/${profileData?.display_name || params.username}.png`}
@@ -654,15 +698,21 @@ export default function ProfilePage({ params }: { params: { username: string } }
           />
           <div className="absolute inset-0 bg-black bg-opacity-30"></div> {/* Overlay for better contrast */}
           {isOwnProfile && (
-            <Button variant="secondary" size="sm" className="absolute top-4 right-4" onClick={handleEditProfile}>
-              <Settings className="h-4 w-4 mr-2" />
-              Edit Channel
+            <Button
+              variant="secondary"
+              size="sm"
+              className="absolute top-2 sm:top-4 right-2 sm:right-4"
+              onClick={handleEditProfile}
+            >
+              <Settings className="h-3 sm:h-4 w-3 sm:w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Edit Channel</span>
+              <span className="sm:hidden">Edit</span>
             </Button>
           )}
         </div>
 
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-6 mb-6 -mt-16 px-4">
-          <Avatar className="w-32 h-32 border-4 border-background shadow-md">
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-4 sm:gap-6 mb-4 sm:mb-6 -mt-12 sm:-mt-16 px-2 sm:px-4">
+          <Avatar className="w-20 sm:w-24 md:w-32 h-20 sm:h-24 md:h-32 border-4 border-background shadow-md">
             <AvatarImage
               src={`https://superfan.alterwork.in/files/profilepic/${profileData?.display_name || params.username}.png`}
               alt={profileData?.display_name || params.username}
@@ -670,22 +720,24 @@ export default function ProfilePage({ params }: { params: { username: string } }
                 e.currentTarget.src = "/placeholder.svg?height=128&width=128"
               }}
             />
-            <AvatarFallback className="text-4xl">
+            <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl">
               {profileData?.display_name?.charAt(0)?.toUpperCase() || params.username.charAt(0).toUpperCase()}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 flex flex-col md:flex-row md:items-center md:justify-between gap-4 w-full">
             <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <h1 className="text-3xl font-bold">@{profileData?.display_name || params.username}</h1>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2 sm:mb-1">
+                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">
+                  @{profileData?.display_name || params.username}
+                </h1>
                 {profileData?.status === "live" && (
-                  <Badge variant="destructive" className="animate-pulse">
+                  <Badge variant="destructive" className="animate-pulse w-fit">
                     <div className="w-2 h-2 bg-white rounded-full mr-1"></div>
                     LIVE
                   </Badge>
                 )}
               </div>
-              <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
+              <div className="flex flex-wrap gap-x-4 sm:gap-x-6 gap-y-2 text-xs sm:text-sm text-muted-foreground">
                 <span>
                   <strong>{formatNumber(profileData?.followers || 0)}</strong> followers
                 </span>
@@ -698,12 +750,13 @@ export default function ProfilePage({ params }: { params: { username: string } }
               </div>
             </div>
             {!isOwnProfile && currentUser && currentUser.displayName !== params.username && (
-              <div className="flex gap-2 mt-4 md:mt-0">
+              <div className="flex flex-col sm:flex-row gap-2 mt-2 md:mt-0 w-full sm:w-auto">
                 <Button
                   variant={isFollowing ? "secondary" : "default"}
                   onClick={isFollowing ? handleUnfollow : handleFollow}
                   disabled={isFollowingAction || !currentUser}
-                  className={!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""}
+                  className={`${!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""} flex-1 sm:flex-none`}
+                  size="sm"
                 >
                   {isFollowingAction
                     ? isFollowing
@@ -717,6 +770,8 @@ export default function ProfilePage({ params }: { params: { username: string } }
                   variant={isBlocked ? "outline" : "destructive"}
                   onClick={() => (isBlocked ? handleUnblockUser(params.username) : handleBlockUser(params.username))}
                   disabled={isBlockingAction || !currentUser}
+                  className="flex-1 sm:flex-none"
+                  size="sm"
                 >
                   {isBlockingAction ? (isBlocked ? "Unblocking..." : "Blocking...") : isBlocked ? "Unblock" : "Block"}
                 </Button>
@@ -727,10 +782,10 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
         {/* Profile Tabs */}
         {isLoadingProfile ? (
-          <div className="animate-pulse space-y-6">
-            <div className="h-10 bg-muted rounded w-full max-w-md mx-auto"></div>
-            <div className="h-64 bg-muted rounded w-full"></div>
-            <div className="h-48 bg-muted rounded w-full"></div>
+          <div className="animate-pulse space-y-4 sm:space-y-6">
+            <div className="h-8 sm:h-10 bg-muted rounded w-full max-w-md mx-auto"></div>
+            <div className="h-48 sm:h-64 bg-muted rounded w-full"></div>
+            <div className="h-32 sm:h-48 bg-muted rounded w-full"></div>
           </div>
         ) : profileData ? (
           <ProfileTabs
@@ -751,12 +806,23 @@ export default function ProfilePage({ params }: { params: { username: string } }
             isLoadingFollowing={isLoadingFollowing}
             fetchFollowers={fetchFollowers}
             fetchFollowing={fetchFollowing}
+            aboutData={aboutData}
+            isLoadingAbout={isLoadingAbout}
+            fetchAboutDetails={fetchAboutDetails}
           />
         ) : (
-          <div className="text-center text-muted-foreground py-8">
+          <div className="text-center text-muted-foreground py-6 sm:py-8">
             <p>User profile not found.</p>
           </div>
         )}
+        {/* Edit Profile Modal */}
+        <EditProfileModal
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          profileData={profileData}
+          onSave={handleSaveProfile}
+          initialAboutData={aboutData}
+        />
       </div>
     </div>
   )

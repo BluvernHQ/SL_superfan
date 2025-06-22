@@ -191,16 +191,21 @@ export function UserSearch({ users: propUsers, isLoading: propIsLoading }: UserS
 
   return (
     <div ref={searchRef} className="relative w-full">
-      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-      <Input
-        id="search"
-        placeholder="Search users..."
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onFocus={() => setIsFocused(true)}
-        onKeyDown={handleKeyDown}
-        className="pl-10 pr-4 h-9 bg-background/50 border-border/50 focus:bg-background focus:border-border"
-      />
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4 z-10 pointer-events-none" />
+        <Input
+          id="search"
+          type="search"
+          placeholder="Search users..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => setIsFocused(true)}
+          onKeyDown={handleKeyDown}
+          className="pl-10 pr-4 h-9 bg-background/50 border-border/50 focus:bg-background focus:border-border"
+          autoComplete="off"
+          spellCheck="false"
+        />
+      </div>
 
       {isFocused && query.trim().length > 0 && (
         <div className="absolute left-0 right-0 top-full z-50 mt-2 max-h-80 overflow-y-auto rounded-md border border-border bg-popover shadow-lg">
