@@ -107,8 +107,9 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave, initial
     if (!file) return
 
     // Validate file type
-    if (!file.type.startsWith("image/")) {
-      setError("Please select a valid image file")
+    if (file.type !== "image/png") {
+      // Changed from startsWith("image/") to exact "image/png"
+      setError("Please select a PNG image file") // Updated error message
       return
     }
 
@@ -311,7 +312,7 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave, initial
             </div>
 
             {/* File Input */}
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileSelect} className="hidden" />
+            <input ref={fileInputRef} type="file" accept="image/png" onChange={handleFileSelect} className="hidden" />
 
             {/* File Upload Actions */}
             <div className="flex gap-2">
@@ -340,7 +341,7 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave, initial
 
             {/* Image Requirements */}
             <div className="text-xs text-gray-500 space-y-1">
-              <p>• Supported formats: JPG, PNG, GIF, WebP</p>
+              <p>• Supported format: PNG</p> {/* Updated text */}
               <p>• Maximum file size: 5MB</p>
               <p>• Recommended: Square image (1:1 aspect ratio)</p>
             </div>

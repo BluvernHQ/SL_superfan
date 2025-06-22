@@ -173,7 +173,8 @@ export default function ViewerPage() {
     if (type === "storage" && actualVideoId) {
       // Handle recorded video
       setRecordedVideoUrl(`https://superfan.alterwork.in/files/videos/${actualVideoId}.webm`)
-      fetchVideoDetails(actualVideoId)
+      // Use fetchStreamDetails for recorded videos as well, passing videoId as roomId
+      fetchStreamDetails(actualVideoId)
     } else if (type === "live" && actualRoomId) {
       // Handle live stream
       handleWatchStream()
@@ -183,49 +184,50 @@ export default function ViewerPage() {
     }
   }, [type, actualVideoId, actualRoomId])
 
-  // Fetch video details for recorded videos
-  const fetchVideoDetails = async (videoId: string) => {
-    try {
-      setIsLoadingStreamDetails(true)
-      const headers = await getAuthHeaders()
+  // Fetch video details for recorded videos (This function is no longer used as per user request)
+  // const fetchVideoDetails = async (videoId: string) => {
+  //   try {
+  //     setIsLoadingStreamDetails(true)
+  //     const headers = await getAuthHeaders()
 
-      const response = await fetch("https://superfan.alterwork.in/api/get_rec", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            username: "all",
-          },
-        }),
-      })
+  //     const response = await fetch("https://superfan.alterwork.in/api/get_rec", {
+  //       method: "POST",
+  //       headers,
+  //       body: JSON.stringify({
+  //         payload: {
+  //           username: "all",
+  //         },
+  //       }),
+  //     })
 
-      if (response.ok) {
-        const data = await response.json()
-        if (Array.isArray(data.user)) {
-          const video = data.user.find((rec: any) => rec.hookId === videoId)
-          if (video) {
-            setStreamDetails({
-              title: video.title || video.description || `Recording ${videoId}`,
-              description: video.description || "",
-              streamerName: video.name || "Unknown",
-              streamerUID: video.UID || "",
-              startTime: video.start || "",
-              chatEnabled: false, // Recorded videos don't have live chat
-            })
-            setLikes(video.likes || 0)
-            setCurrentViewers(video.maxviews || 0)
-          }
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching video details:", error)
-    } finally {
-      setIsLoadingStreamDetails(false)
-    }
-  }
+  //     if (response.ok) {
+  //       const data = await response.json()
+  //       if (Array.isArray(data.user)) {
+  //         const video = data.user.find((rec: any) => rec.hookId === videoId)
+  //         if (video) {
+  //           setStreamDetails({
+  //             title: video.title || video.description || `Recording ${videoId}`,
+  //             description: video.description || "",
+  //             streamerName: video.name || "Unknown",
+  //             streamerUID: video.UID || "",
+  //             startTime: video.start || "",
+  //             chatEnabled: false, // Recorded videos don't have live chat
+  //           })
+  //           setLikes(video.likes || 0)
+  //           setCurrentViewers(video.maxviews || 0)
+  //         }
+  //       }
+  //     }
+  //   } catch (error) {
+  //     console.error("Error fetching video details:", error)
+  //   } finally {
+  //     setIsLoadingStreamDetails(false)
+  //   }
+  // }
 
-  // Fetch stream details for live streams (existing function)
-  const fetchStreamDetails = async (roomId: string) => {
+  // Fetch stream details for live streams (now also used for recorded videos)
+  const fetchStreamDetails = async (id: string) => {
+    // Renamed roomId to id for clarity
     try {
       setIsLoadingStreamDetails(true)
       const headers = await getAuthHeaders()
@@ -235,7 +237,7 @@ export default function ViewerPage() {
         headers,
         body: JSON.stringify({
           payload: {
-            room_id: roomId,
+            room_id: id, // Use the provided ID (which can be hookId for storage)
           },
         }),
       })
@@ -243,21 +245,45 @@ export default function ViewerPage() {
       if (response.ok) {
         const data = await response.json()
         setStreamDetails({
-          title: data.title || `Live Stream - Room ${roomId}`,
+          title: data.title || `Stream - ${id}`, // Fallback title
           description: data.description || "",
           streamerName: data.name || "Streamer",
           streamerUID: data.UID || "",
           startTime: data.start || "",
-          chatEnabled: data.chatEnabled !== undefined ? data.chatEnabled : true,
+          chatEnabled: data.chatEnabled !== undefined ? data.chatEnabled : type === "live", // Chat enabled only for live streams by default
         })
-        setIsChatEnabled(data.chatEnabled !== undefined ? data.chatEnabled : true)
+        setIsChatEnabled(data.chatEnabled !== undefined ? data.chatEnabled : type === "live")
 
         if (data.likes !== undefined) {
           setLikes(data.likes)
         }
+        if (data.viewers !== undefined) {
+          // Assuming get_live_det might return viewers
+          setCurrentViewers(data.viewers)
+        }
+      } else {
+        console.error("Failed to fetch stream details:", response.status, response.statusText)
+        // Fallback for streamDetails if API fails
+        setStreamDetails({
+          title: `Stream - ${id}`,
+          description: "Details not available.",
+          streamerName: "Unknown",
+          streamerUID: "",
+          startTime: "",
+          chatEnabled: false,
+        })
       }
     } catch (error) {
       console.error("Error fetching stream details:", error)
+      // Fallback for streamDetails on network error
+      setStreamDetails({
+        title: `Stream - ${id}`,
+        description: "Details could not be loaded due to a network error.",
+        streamerName: "Unknown",
+        streamerUID: "",
+        startTime: "",
+        chatEnabled: false,
+      })
     } finally {
       setIsLoadingStreamDetails(false)
     }
