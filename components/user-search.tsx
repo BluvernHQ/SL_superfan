@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { buildApiUrl, buildProfilePicUrl, API_CONFIG } from "@/lib/config"
 import { Skeleton } from "@/components/ui/skeleton"
 import { auth } from "@/lib/firebase" // Import Firebase auth
 
@@ -74,7 +75,7 @@ export function UserSearch({ users: propUsers, isLoading: propIsLoading }: UserS
         setInternalIsLoading(true)
         try {
           const headers = await getAuthHeaders()
-          const response = await fetch("https://superfan.alterwork.in/api/fetch_users", {
+          const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.FETCH_USERS), {
             method: "GET",
             headers,
           })
@@ -231,7 +232,7 @@ export function UserSearch({ users: propUsers, isLoading: propIsLoading }: UserS
                       <div className="relative">
                         <Avatar className="h-9 w-9">
                           <AvatarImage
-                            src={`https://superfan.alterwork.in/files/profilepic/${user.username}.png`}
+                            src={buildProfilePicUrl(user.username)}
                             alt={user.display_name || user.username}
                             onError={(e) => {
                               e.currentTarget.src = "/placeholder.svg?height=36&width=36"

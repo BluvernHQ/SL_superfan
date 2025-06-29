@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useRouter } from "next/navigation"
 import { auth } from "@/lib/firebase"
 import { getIdToken } from "firebase/auth"
+import { Twitter, Youtube, Instagram } from "lucide-react"
 
 interface Video {
   id: string
@@ -160,41 +161,41 @@ export function ProfileTabs({
 
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-      <div className="flex justify-center mb-6">
-        {/* Fixed horizontal layout using flex instead of dynamic grid */}
-        <TabsList className="flex w-auto gap-1 p-1">
-          <TabsTrigger value="home">Home</TabsTrigger>
-          <TabsTrigger value="about">About</TabsTrigger>
-          {isOwnProfile && <TabsTrigger value="followers">Followers</TabsTrigger>}
-          {isOwnProfile && <TabsTrigger value="following">Following</TabsTrigger>}
-          {isOwnProfile && <TabsTrigger value="blocklist">Blocklist</TabsTrigger>}
+      {/* Mobile-optimized tab navigation */}
+      <div className="flex justify-center mb-4 sm:mb-6">
+        <TabsList className="flex w-full max-w-md gap-1 p-1 h-12 sm:h-10">
+          <TabsTrigger value="home" className="flex-1 text-xs sm:text-sm h-10">Home</TabsTrigger>
+          <TabsTrigger value="about" className="flex-1 text-xs sm:text-sm h-10">About</TabsTrigger>
+          {isOwnProfile && <TabsTrigger value="followers" className="flex-1 text-xs sm:text-sm h-10">Followers</TabsTrigger>}
+          {isOwnProfile && <TabsTrigger value="following" className="flex-1 text-xs sm:text-sm h-10">Following</TabsTrigger>}
+          {isOwnProfile && <TabsTrigger value="blocklist" className="flex-1 text-xs sm:text-sm h-10">Blocklist</TabsTrigger>}
         </TabsList>
       </div>
 
-      <TabsContent value="home">
-        <div className="space-y-6">
-          {/* Recent Broadcasts Grid */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Broadcasts</CardTitle>
+      <TabsContent value="home" className="mt-0">
+        <div className="space-y-4 sm:space-y-6">
+          {/* Recent Broadcasts Grid - Mobile optimized */}
+          <Card className="border-0 shadow-none sm:border sm:shadow">
+            <CardHeader className="pb-3 sm:pb-6">
+              <CardTitle className="text-lg sm:text-xl">Recent Broadcasts</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0 sm:pt-0">
               {isLoadingRecordings ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                   {Array.from({ length: 4 }).map((_, index) => (
                     <div key={index} className="animate-pulse space-y-2">
-                      <div className="w-full h-32 bg-muted rounded-md"></div>
-                      <div className="h-4 bg-muted rounded w-3/4"></div>
-                      <div className="h-3 bg-muted rounded w-1/2"></div>
+                      <div className="w-full h-24 sm:h-32 bg-muted rounded-md"></div>
+                      <div className="h-3 sm:h-4 bg-muted rounded w-3/4"></div>
+                      <div className="h-2 sm:h-3 bg-muted rounded w-1/2"></div>
                     </div>
                   ))}
                 </div>
               ) : pastRecordings.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                   {pastRecordings.map((video) => (
                     <Card
                       key={video.id}
-                      className="cursor-pointer hover:shadow-lg transition-shadow"
+                      className="cursor-pointer hover:shadow-lg transition-shadow border-0 shadow-none sm:border sm:shadow"
                       onClick={() => handlePlayRecording(video)}
                     >
                       <CardContent className="p-0">
@@ -203,13 +204,13 @@ export function ProfileTabs({
                           alt={video.title}
                           width={300}
                           height={168}
-                          className="w-full h-auto rounded-t-lg object-cover aspect-video"
+                          className="w-full h-24 sm:h-32 rounded-t-lg object-cover aspect-video"
                           onError={(e) => {
                             e.currentTarget.src = "/placeholder.svg?height=168&width=300&text=No Thumbnail"
                           }}
                         />
-                        <div className="p-3">
-                          <h3 className="font-semibold text-sm truncate">{video.title}</h3>
+                        <div className="p-2 sm:p-3">
+                          <h3 className="font-semibold text-xs sm:text-sm truncate mb-1">{video.title}</h3>
                           <p className="text-xs text-muted-foreground">
                             {formatNumber(video.views)} views • {video.date}
                           </p>
@@ -219,127 +220,131 @@ export function ProfileTabs({
                   ))}
                 </div>
               ) : (
-                <p className="text-muted-foreground text-center py-8">No recent broadcasts.</p>
+                <div className="text-center py-8 sm:py-12">
+                  <p className="text-muted-foreground text-sm sm:text-base">No recent broadcasts.</p>
+                </div>
               )}
             </CardContent>
           </Card>
-
-          {/* Removed Edit Panels button */}
         </div>
       </TabsContent>
 
-      <TabsContent value="about">
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>About</CardTitle>
+      <TabsContent value="about" className="mt-0">
+        <Card className="mt-0 sm:mt-6 border-0 shadow-none sm:border sm:shadow">
+          <CardHeader className="pb-3 sm:pb-6">
+            <CardTitle className="text-lg sm:text-xl">About</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-0 sm:pt-0">
             {!auth.currentUser ? (
-              <p className="text-muted-foreground text-center py-8">Login to see user's details</p>
+              <div className="text-center py-8 sm:py-12">
+                <p className="text-muted-foreground text-sm sm:text-base">Login to see user's details</p>
+              </div>
             ) : isLoadingAbout ? (
-              <div className="space-y-4 animate-pulse">
-                <div className="h-4 bg-muted rounded w-3/4"></div>
-                <div className="h-4 bg-muted rounded w-full"></div>
-                <div className="h-4 bg-muted rounded w-1/2"></div>
-                <div className="h-4 bg-muted rounded w-2/3"></div>
-                <div className="h-4 bg-muted rounded w-full"></div>
+              <div className="space-y-3 sm:space-y-4 animate-pulse">
+                <div className="h-3 sm:h-4 bg-muted rounded w-3/4"></div>
+                <div className="h-3 sm:h-4 bg-muted rounded w-full"></div>
+                <div className="h-3 sm:h-4 bg-muted rounded w-1/2"></div>
+                <div className="h-3 sm:h-4 bg-muted rounded w-2/3"></div>
+                <div className="h-3 sm:h-4 bg-muted rounded w-full"></div>
               </div>
             ) : aboutData ? (
-              <div className="space-y-4 text-sm text-muted-foreground">
+              <div className="space-y-4 sm:space-y-6 text-sm sm:text-base text-muted-foreground">
                 <div>
-                  <h3 className="font-semibold text-foreground">Name</h3>
-                  <p>{aboutData.name || "-"}</p>
+                  <h3 className="font-semibold text-foreground text-sm sm:text-base mb-1">Name</h3>
+                  <p className="text-sm sm:text-base">{aboutData.name || "-"}</p>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-foreground">Bio</h3>
-                  <p>{aboutData.bio || "-"}</p>
+                  <h3 className="font-semibold text-foreground text-sm sm:text-base mb-1">Bio</h3>
+                  <p className="text-sm sm:text-base">{aboutData.bio || "-"}</p>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-foreground">Email</h3>
-                  <p>{aboutData.email || "-"}</p>
+                  <h3 className="font-semibold text-foreground text-sm sm:text-base mb-1">Email</h3>
+                  <p className="text-sm sm:text-base">{aboutData.email || "-"}</p>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-foreground">Channel Category</h3>
-                  <p>{aboutData.channel_category || "-"}</p>
+                  <h3 className="font-semibold text-foreground text-sm sm:text-base mb-1">Channel Category</h3>
+                  <p className="text-sm sm:text-base">{aboutData.channel_category || "-"}</p>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-foreground">Stream Language</h3>
-                  <p>{aboutData.stream_Language || "-"}</p>
+                  <h3 className="font-semibold text-foreground text-sm sm:text-base mb-1">Stream Language</h3>
+                  <p className="text-sm sm:text-base">{aboutData.stream_Language || "-"}</p>
                 </div>
                 <div>
-                  <h3 className="font-semibold text-foreground">Social Links</h3>
-                  <div className="flex flex-wrap gap-4 mt-2">
+                  <h3 className="font-semibold text-foreground text-sm sm:text-base mb-2">Social Links</h3>
+                  <div className="flex flex-wrap gap-3 sm:gap-4">
                     {aboutData.twitter_link ? (
                       <a
                         href={aboutData.twitter_link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-500 hover:underline"
+                        className="flex items-center justify-center w-10 h-10 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-colors"
+                        title="Twitter"
                       >
-                        Twitter
+                        <Twitter className="w-5 h-5" />
                       </a>
-                    ) : (
-                      <span>-</span>
-                    )}
+                    ) : null}
                     {aboutData.youtube_link ? (
                       <a
                         href={aboutData.youtube_link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-red-500 hover:underline"
+                        className="flex items-center justify-center w-10 h-10 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
+                        title="YouTube"
                       >
-                        YouTube
+                        <Youtube className="w-5 h-5" />
                       </a>
-                    ) : (
-                      <span>-</span>
-                    )}
+                    ) : null}
                     {aboutData.instagram_link ? (
                       <a
                         href={aboutData.instagram_link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-purple-500 hover:underline"
+                        className="flex items-center justify-center w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-full transition-colors"
+                        title="Instagram"
                       >
-                        Instagram
+                        <Instagram className="w-5 h-5" />
                       </a>
-                    ) : (
-                      <span>-</span>
+                    ) : null}
+                    {!aboutData.twitter_link && !aboutData.youtube_link && !aboutData.instagram_link && (
+                      <span className="text-sm sm:text-base text-muted-foreground">No social links</span>
                     )}
                   </div>
                 </div>
               </div>
             ) : (
-              <p className="text-muted-foreground text-center py-8">Failed to load about information.</p>
+              <div className="text-center py-8 sm:py-12">
+                <p className="text-muted-foreground text-sm sm:text-base">Failed to load about information.</p>
+              </div>
             )}
           </CardContent>
         </Card>
       </TabsContent>
 
       {isOwnProfile && (
-        <TabsContent value="followers">
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Followers ({formatNumber(profileData?.followers || 0)})</CardTitle>
+        <TabsContent value="followers" className="mt-0">
+          <Card className="mt-0 sm:mt-6 border-0 shadow-none sm:border sm:shadow">
+            <CardHeader className="pb-3 sm:pb-6">
+              <CardTitle className="text-lg sm:text-xl">Followers ({formatNumber(profileData?.followers || 0)})</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0 sm:pt-0">
               {isLoadingFollowers ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
                   {Array.from({ length: 8 }).map((_, index) => (
-                    <div key={index} className="flex flex-col items-center p-3 border rounded-lg animate-pulse">
-                      <div className="w-16 h-16 bg-muted rounded-full mb-2"></div>
-                      <div className="h-3 bg-muted rounded w-full"></div>
+                    <div key={index} className="flex flex-col items-center p-2 sm:p-3 border rounded-lg animate-pulse">
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-muted rounded-full mb-2"></div>
+                      <div className="h-2 sm:h-3 bg-muted rounded w-full"></div>
                     </div>
                   ))}
                 </div>
               ) : followersList.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
                   {followersList.map((followerUsername) => (
                     <div
                       key={followerUsername}
-                      className="flex flex-col items-center p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                      className="flex flex-col items-center p-2 sm:p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
                       onClick={() => handleUserClick(followerUsername)}
                     >
-                      <Avatar className="h-16 w-16 mb-2">
+                      <Avatar className="h-12 w-12 sm:h-16 sm:w-16 mb-2">
                         <AvatarImage
                           src={`https://superfan.alterwork.in/files/profilepic/${followerUsername}.png`}
                           alt={followerUsername}
@@ -347,14 +352,16 @@ export function ProfileTabs({
                             e.currentTarget.src = "/placeholder.svg?height=64&width=64"
                           }}
                         />
-                        <AvatarFallback className="text-lg">{followerUsername.charAt(0).toUpperCase()}</AvatarFallback>
+                        <AvatarFallback className="text-sm sm:text-lg">{followerUsername.charAt(0).toUpperCase()}</AvatarFallback>
                       </Avatar>
-                      <span className="text-sm font-medium text-center truncate w-full">@{followerUsername}</span>
+                      <span className="text-xs sm:text-sm font-medium text-center truncate w-full">@{followerUsername}</span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-muted-foreground text-center py-8">No followers yet</p>
+                <div className="text-center py-8 sm:py-12">
+                  <p className="text-muted-foreground text-sm sm:text-base">No followers yet</p>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -362,31 +369,31 @@ export function ProfileTabs({
       )}
 
       {isOwnProfile && (
-        <TabsContent value="following">
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Following ({formatNumber(profileData?.following || 0)})</CardTitle>
+        <TabsContent value="following" className="mt-0">
+          <Card className="mt-0 sm:mt-6 border-0 shadow-none sm:border sm:shadow">
+            <CardHeader className="pb-3 sm:pb-6">
+              <CardTitle className="text-lg sm:text-xl">Following ({formatNumber(profileData?.following || 0)})</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0 sm:pt-0">
               {isLoadingFollowing ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
                   {Array.from({ length: 8 }).map((_, index) => (
-                    <div key={index} className="flex flex-col items-center p-3 border rounded-lg animate-pulse">
-                      <div className="w-16 h-16 bg-muted rounded-full mb-2"></div>
-                      <div className="h-3 bg-muted rounded w-full mb-2"></div>
+                    <div key={index} className="flex flex-col items-center p-2 sm:p-3 border rounded-lg animate-pulse">
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-muted rounded-full mb-2"></div>
+                      <div className="h-2 sm:h-3 bg-muted rounded w-full mb-2"></div>
                       <div className="h-6 bg-muted rounded w-full"></div>
                     </div>
                   ))}
                 </div>
               ) : followingList.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
                   {followingList.map((followingUsername) => (
                     <div
                       key={followingUsername}
-                      className="flex flex-col items-center p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                      className="flex flex-col items-center p-2 sm:p-3 border rounded-lg hover:bg-muted/50 transition-colors"
                     >
                       <Avatar
-                        className="h-16 w-16 mb-2 cursor-pointer"
+                        className="h-12 w-12 sm:h-16 sm:w-16 mb-2 cursor-pointer"
                         onClick={() => handleUserClick(followingUsername)}
                       >
                         <AvatarImage
@@ -396,10 +403,10 @@ export function ProfileTabs({
                             e.currentTarget.src = "/placeholder.svg?height=64&width=64"
                           }}
                         />
-                        <AvatarFallback className="text-lg">{followingUsername.charAt(0).toUpperCase()}</AvatarFallback>
+                        <AvatarFallback className="text-sm sm:text-lg">{followingUsername.charAt(0).toUpperCase()}</AvatarFallback>
                       </Avatar>
                       <span
-                        className="text-sm font-medium text-center truncate w-full mb-2 cursor-pointer"
+                        className="text-xs sm:text-sm font-medium text-center truncate w-full mb-2 cursor-pointer"
                         onClick={() => handleUserClick(followingUsername)}
                       >
                         @{followingUsername}
@@ -407,7 +414,7 @@ export function ProfileTabs({
                       <Button
                         size="sm"
                         variant="outline"
-                        className="w-full text-xs"
+                        className="w-full text-xs h-7 sm:h-8"
                         onClick={() => handleUnfollow(followingUsername)}
                         disabled={unfollowingUsers.has(followingUsername)}
                       >
@@ -417,7 +424,9 @@ export function ProfileTabs({
                   ))}
                 </div>
               ) : (
-                <p className="text-muted-foreground text-center py-8">Not following anyone yet</p>
+                <div className="text-center py-8 sm:py-12">
+                  <p className="text-muted-foreground text-sm sm:text-base">Not following anyone yet</p>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -425,27 +434,27 @@ export function ProfileTabs({
       )}
 
       {isOwnProfile && (
-        <TabsContent value="blocklist">
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle>Blacklisted Users</CardTitle>
+        <TabsContent value="blocklist" className="mt-0">
+          <Card className="mt-0 sm:mt-6 border-0 shadow-none sm:border sm:shadow">
+            <CardHeader className="pb-3 sm:pb-6">
+              <CardTitle className="text-lg sm:text-xl">Blacklisted Users</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-0 sm:pt-0">
               {isLoadingBlocklist ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
                   {Array.from({ length: 6 }).map((_, index) => (
-                    <div key={index} className="flex flex-col items-center p-3 border rounded-lg animate-pulse">
-                      <div className="w-16 h-16 bg-muted rounded-full mb-2"></div>
-                      <div className="h-3 bg-muted rounded w-full mb-2"></div>
+                    <div key={index} className="flex flex-col items-center p-2 sm:p-3 border rounded-lg animate-pulse">
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-muted rounded-full mb-2"></div>
+                      <div className="h-2 sm:h-3 bg-muted rounded w-full mb-2"></div>
                       <div className="h-6 bg-muted rounded w-full"></div>
                     </div>
                   ))}
                 </div>
               ) : blacklistedUsers.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
                   {blacklistedUsers.map((blockedUsername) => (
-                    <div key={blockedUsername} className="flex flex-col items-center p-3 border rounded-lg">
-                      <Avatar className="h-16 w-16 mb-2">
+                    <div key={blockedUsername} className="flex flex-col items-center p-2 sm:p-3 border rounded-lg">
+                      <Avatar className="h-12 w-12 sm:h-16 sm:w-16 mb-2">
                         <AvatarImage
                           src={`https://superfan.alterwork.in/files/profilepic/${blockedUsername}.png`}
                           alt={blockedUsername}
@@ -453,13 +462,13 @@ export function ProfileTabs({
                             e.currentTarget.src = "/placeholder.svg?height=64&width=64"
                           }}
                         />
-                        <AvatarFallback className="text-lg">{blockedUsername.charAt(0).toUpperCase()}</AvatarFallback>
+                        <AvatarFallback className="text-sm sm:text-lg">{blockedUsername.charAt(0).toUpperCase()}</AvatarFallback>
                       </Avatar>
-                      <span className="text-sm font-medium text-center truncate w-full mb-2">@{blockedUsername}</span>
+                      <span className="text-xs sm:text-sm font-medium text-center truncate w-full mb-2">@{blockedUsername}</span>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="w-full text-xs"
+                        className="w-full text-xs h-7 sm:h-8"
                         onClick={() => handleUnblacklistUser(blockedUsername)}
                       >
                         Unblock
@@ -468,7 +477,9 @@ export function ProfileTabs({
                   ))}
                 </div>
               ) : (
-                <p className="text-muted-foreground text-center py-8">No blacklisted users</p>
+                <div className="text-center py-8 sm:py-12">
+                  <p className="text-muted-foreground text-sm sm:text-base">No blocked users</p>
+                </div>
               )}
             </CardContent>
           </Card>

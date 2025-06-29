@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { buildApiUrl, buildProfilePicUrl, API_CONFIG } from "@/lib/config"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Camera, X, Upload } from "lucide-react"
 import { auth } from "@/lib/firebase"
@@ -176,7 +177,7 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave, initial
         formDataToSend.append("profile_picture", selectedFile)
       }
 
-      const response = await fetch("https://superfan.alterwork.in/api/edit_profile", {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.EDIT_PROFILE), {
         method: "POST",
         headers: {
           // Don't set Content-Type header - let the browser set it for FormData
@@ -249,7 +250,7 @@ export function EditProfileModal({ isOpen, onClose, profileData, onSave, initial
 
   const getCurrentProfilePicture = () => {
     if (previewUrl) return previewUrl
-    return `https://superfan.alterwork.in/files/profilepic/${profileData?.display_name}.png`
+    return buildProfilePicUrl(profileData?.display_name || "")
   }
 
   return (

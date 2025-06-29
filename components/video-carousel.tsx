@@ -18,7 +18,7 @@ interface Video {
 }
 
 interface VideoCarouselProps {
-  title: string
+  title?: string
   videos: Video[]
   onPlayVideo: (video: Video) => void
   emptyMessage?: string
@@ -42,7 +42,7 @@ export function VideoCarousel({
 
   return (
     <div className="mb-8">
-      <h2 className="text-2xl font-bold mb-4">{title}</h2>
+      {title && <h2 className="text-2xl font-bold mb-4">{title}</h2>}
       {isLoading ? (
         <div className="flex space-x-4 overflow-hidden">
           {Array.from({ length: 3 }).map((_, index) => (

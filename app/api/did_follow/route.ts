@@ -2,28 +2,27 @@ import { NextResponse } from "next/server"
 import { buildApiUrl, API_CONFIG } from "@/lib/config"
 
 /**
- * Proxy to POST https://superfan.alterwork.in/api/create_follower
+ * Proxy to POST https://superfan.alterwork.in/api/did_follow
  *
  * Expects JSON body: { "target_username": string }
- * Converts to: { "payload": { "follow": string } } for the backend API
- * Forwards the caller's Authorization header if present so
- * Firebase / JWT auth keeps working.
+ * Converts to: { "payload": { "did_follow": string } } for the backend API
+ * Returns: { "followed": boolean }
  */
 export async function POST(req: Request) {
   try {
     const body = await req.json()
     const authHeader = req.headers.get("authorization") ?? ""
 
-    console.log("Follow user request:", { body, hasAuth: !!authHeader })
+    console.log("Did follow check request:", { body, hasAuth: !!authHeader })
 
     // Convert payload format for backend API
     const backendPayload = {
       payload: {
-        follow: body.target_username
+        did_follow: body.target_username
       }
     }
 
-    const upstream = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.CREATE_FOLLOWER), {
+    const upstream = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.DID_FOLLOW), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -51,10 +50,10 @@ export async function POST(req: Request) {
     
     return NextResponse.json(data, { status: upstream.status })
   } catch (error) {
-    console.error("Error in follow_user API route:", error)
+    console.error("Error in did_follow API route:", error)
     return NextResponse.json(
       { error: "Internal server error", details: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
     )
   }
-}
+} 

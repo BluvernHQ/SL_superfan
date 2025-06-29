@@ -4,13 +4,14 @@ import { useState, useEffect } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Settings } from "lucide-react"
-import { Navigation } from "@/components/navigation"
+import { Settings, Play, Twitter, Youtube, Instagram, X } from "lucide-react"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged, getIdToken } from "firebase/auth"
 import { useRouter } from "next/navigation"
 import { ProfileTabs } from "@/components/profile-tabs"
 import { EditProfileModal } from "@/components/edit-profile-modal"
+import { MobileLayout } from "@/components/mobile-layout"
+import { useUserStore } from "@/lib/user-store"
 
 interface UserProfileData {
   UID: string
@@ -48,6 +49,13 @@ export default function ProfilePage({ params }: { params: { username: string } }
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [aboutData, setAboutData] = useState<any>(null)
   const [isLoadingAbout, setIsLoadingAbout] = useState(true)
+  const [activeTab, setActiveTab] = useState("home")
+  const [unfollowingUsers, setUnfollowingUsers] = useState<Set<string>>(new Set())
+  const [selectedVideo, setSelectedVideo] = useState<any>(null)
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false)
+  
+  // Use the singleton user store
+  const { updateFollowStatus } = useUserStore()
 
   const getAuthHeaders = async () => {
     const headers: Record<string, string> = {
@@ -161,32 +169,6 @@ export default function ProfilePage({ params }: { params: { username: string } }
       setIsLoadingAbout(false)
     }
   }
-
-  // Fetch user details when auth is loaded and we have the username
-  useEffect(() => {
-    if (authLoaded && params.username) {
-      fetchUserDetails()
-      fetchPastRecordings()
-      fetchAboutDetails()
-    }
-  }, [authLoaded, params.username])
-
-  // Re-check ownership when currentUser or profileData changes
-  useEffect(() => {
-    if (currentUser && profileData) {
-      const isOwner = checkIsOwnProfile(currentUser, profileData)
-      setIsOwnProfile(isOwner)
-      console.log("Re-checking ownership, setting isOwnProfile to:", isOwner)
-    }
-  }, [currentUser, profileData, params.username])
-
-  useEffect(() => {
-    if (currentUser && isOwnProfile) {
-      fetchBlocklist()
-    } else if (currentUser && !isOwnProfile) {
-      setBlacklistedUsers([])
-    }
-  }, [currentUser, isOwnProfile, params.username])
 
   const fetchPastRecordings = async () => {
     setIsLoadingRecordings(true)
@@ -477,6 +459,14 @@ export default function ProfilePage({ params }: { params: { username: string } }
 
   const handlePlayRecording = (recording: any) => {
     console.log("Playing recording (placeholder):", recording.title)
+    // For mobile, show in modal; for desktop, open in new tab
+    if (window.innerWidth < 768) {
+      setSelectedVideo(recording)
+      setIsVideoModalOpen(true)
+    } else {
+      const sourceId = recording.hookId || recording.id
+      window.open(`/viewer?type=storage&video=${sourceId}`, "_blank")
+    }
   }
 
   const formatNumber = (num: number) => {
@@ -537,7 +527,43 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
   }
 
-  const handleUnfollow = async () => {
+  const handleUnfollow = async (usernameToUnfollow: string) => {
+    setUnfollowingUsers((prev) => new Set(prev).add(usernameToUnfollow))
+
+    try {
+      const headers = await getAuthHeaders()
+      const response = await fetch("https://superfan.alterwork.in/api/un_follow", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            unfollow: usernameToUnfollow,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        // Refresh the following list
+        await fetchFollowing()
+        console.log(`Successfully unfollowed ${usernameToUnfollow}`)
+      } else {
+        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
+        console.error(`Failed to unfollow: ${response.status} - ${errorData.message || errorData.reason}`)
+        alert(`Failed to unfollow user: ${errorData.message || "Please try again."}`)
+      }
+    } catch (error: any) {
+      console.error(`Error unfollowing user: ${error.message}`)
+      alert(`Error unfollowing user: ${error.message}`)
+    } finally {
+      setUnfollowingUsers((prev) => {
+        const newSet = new Set(prev)
+        newSet.delete(usernameToUnfollow)
+        return newSet
+      })
+    }
+  }
+
+  const handleUnfollowProfile = async () => {
     if (!currentUser) {
       router.push("/login?redirect=/profile/" + params.username)
       return
@@ -680,39 +706,63 @@ export default function ProfilePage({ params }: { params: { username: string } }
   console.log("- params.username:", params.username)
   console.log("- authLoaded:", authLoaded)
 
-  return (
-    <div className="min-h-screen bg-background">
-      <Navigation />
+  // Fetch user details when auth is loaded and we have the username
+  useEffect(() => {
+    if (authLoaded && params.username) {
+      fetchUserDetails()
+      fetchPastRecordings()
+      fetchAboutDetails()
+    }
+  }, [authLoaded, params.username])
 
-      <div className="container mx-auto px-2 sm:px-4 py-4 sm:py-6">
+  // Re-check ownership when currentUser or profileData changes
+  useEffect(() => {
+    if (currentUser && profileData) {
+      const isOwner = checkIsOwnProfile(currentUser, profileData)
+      setIsOwnProfile(isOwner)
+      console.log("Re-checking ownership, setting isOwnProfile to:", isOwner)
+    }
+  }, [currentUser, profileData, params.username])
+
+  useEffect(() => {
+    if (currentUser && isOwnProfile) {
+      fetchBlocklist()
+    } else if (currentUser && !isOwnProfile) {
+      setBlacklistedUsers([])
+    }
+  }, [currentUser, isOwnProfile, params.username])
+
+  return (
+    <MobileLayout>
+      {/* Desktop Layout */}
+      <div className="hidden md:block">
         {/* Channel Header */}
-        <div className="relative w-full h-32 sm:h-48 md:h-64 rounded-lg mb-4 sm:mb-6 overflow-hidden">
+        <div className="relative w-full h-48 lg:h-64 rounded-lg mb-4 sm:mb-6 overflow-hidden">
           {/* Blurred profile picture as banner image */}
           <img
             src={`https://superfan.alterwork.in/files/profilepic/${profileData?.display_name || params.username}.png`}
             alt="Channel Banner"
-            className="w-full h-full object-cover blur-lg scale-110" // Apply blur and slight scale for effect
+            className="w-full h-full object-cover blur-lg scale-110"
             onError={(e) => {
               e.currentTarget.src = "/placeholder.svg?height=256&width=1200"
             }}
           />
-          <div className="absolute inset-0 bg-black bg-opacity-30"></div> {/* Overlay for better contrast */}
+          <div className="absolute inset-0 bg-black bg-opacity-30"></div>
           {isOwnProfile && (
             <Button
               variant="secondary"
               size="sm"
-              className="absolute top-2 sm:top-4 right-2 sm:right-4"
+              className="absolute top-4 right-4 h-9 px-3 text-sm"
               onClick={handleEditProfile}
             >
-              <Settings className="h-3 sm:h-4 w-3 sm:w-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Edit Channel</span>
-              <span className="sm:hidden">Edit</span>
+              <Settings className="h-4 w-4 mr-2" />
+              Edit Channel
             </Button>
           )}
         </div>
 
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-4 sm:gap-6 mb-4 sm:mb-6 -mt-12 sm:-mt-16 px-2 sm:px-4">
-          <Avatar className="w-20 sm:w-24 md:w-32 h-20 sm:h-24 md:h-32 border-4 border-background shadow-md">
+        <div className="flex flex-row items-start items-center gap-6 mb-6 -mt-16 px-4">
+          <Avatar className="w-32 h-32 border-4 border-background shadow-md">
             <AvatarImage
               src={`https://superfan.alterwork.in/files/profilepic/${profileData?.display_name || params.username}.png`}
               alt={profileData?.display_name || params.username}
@@ -720,14 +770,14 @@ export default function ProfilePage({ params }: { params: { username: string } }
                 e.currentTarget.src = "/placeholder.svg?height=128&width=128"
               }}
             />
-            <AvatarFallback className="text-2xl sm:text-3xl md:text-4xl">
+            <AvatarFallback className="text-4xl">
               {profileData?.display_name?.charAt(0)?.toUpperCase() || params.username.charAt(0).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <div className="flex-1 flex flex-col md:flex-row md:items-center md:justify-between gap-4 w-full">
+          <div className="flex-1 flex flex-row items-center justify-between gap-4 w-full">
             <div className="flex-1">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2 sm:mb-1">
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">
+              <div className="flex flex-row items-center gap-2 mb-1">
+                <h1 className="text-3xl font-bold">
                   @{profileData?.display_name || params.username}
                 </h1>
                 {profileData?.status === "live" && (
@@ -737,7 +787,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
                   </Badge>
                 )}
               </div>
-              <div className="flex flex-wrap gap-x-4 sm:gap-x-6 gap-y-2 text-xs sm:text-sm text-muted-foreground">
+              <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
                 <span>
                   <strong>{formatNumber(profileData?.followers || 0)}</strong> followers
                 </span>
@@ -750,12 +800,12 @@ export default function ProfilePage({ params }: { params: { username: string } }
               </div>
             </div>
             {!isOwnProfile && currentUser && currentUser.displayName !== params.username && (
-              <div className="flex flex-col sm:flex-row gap-2 mt-2 md:mt-0 w-full sm:w-auto">
+              <div className="flex flex-row gap-2">
                 <Button
                   variant={isFollowing ? "secondary" : "default"}
-                  onClick={isFollowing ? handleUnfollow : handleFollow}
+                  onClick={isFollowing ? handleUnfollowProfile : handleFollow}
                   disabled={isFollowingAction || !currentUser}
-                  className={`${!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""} flex-1 sm:flex-none`}
+                  className={`${!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""} h-9`}
                   size="sm"
                 >
                   {isFollowingAction
@@ -770,7 +820,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
                   variant={isBlocked ? "outline" : "destructive"}
                   onClick={() => (isBlocked ? handleUnblockUser(params.username) : handleBlockUser(params.username))}
                   disabled={isBlockingAction || !currentUser}
-                  className="flex-1 sm:flex-none"
+                  className="h-9"
                   size="sm"
                 >
                   {isBlockingAction ? (isBlocked ? "Unblocking..." : "Blocking...") : isBlocked ? "Unblock" : "Block"}
@@ -780,12 +830,12 @@ export default function ProfilePage({ params }: { params: { username: string } }
           </div>
         </div>
 
-        {/* Profile Tabs */}
+        {/* Desktop Profile Tabs */}
         {isLoadingProfile ? (
-          <div className="animate-pulse space-y-4 sm:space-y-6">
-            <div className="h-8 sm:h-10 bg-muted rounded w-full max-w-md mx-auto"></div>
-            <div className="h-48 sm:h-64 bg-muted rounded w-full"></div>
-            <div className="h-32 sm:h-48 bg-muted rounded w-full"></div>
+          <div className="animate-pulse space-y-6">
+            <div className="h-10 bg-muted rounded w-full max-w-md mx-auto"></div>
+            <div className="h-64 bg-muted rounded w-full"></div>
+            <div className="h-48 bg-muted rounded w-full"></div>
           </div>
         ) : profileData ? (
           <ProfileTabs
@@ -811,19 +861,386 @@ export default function ProfilePage({ params }: { params: { username: string } }
             fetchAboutDetails={fetchAboutDetails}
           />
         ) : (
-          <div className="text-center text-muted-foreground py-6 sm:py-8">
-            <p>User profile not found.</p>
+          <div className="text-center text-muted-foreground py-12">
+            <p className="text-base">User profile not found.</p>
           </div>
         )}
-        {/* Edit Profile Modal */}
-        <EditProfileModal
-          isOpen={isEditModalOpen}
-          onClose={() => setIsEditModalOpen(false)}
-          profileData={profileData}
-          onSave={handleSaveProfile}
-          initialAboutData={aboutData}
-        />
       </div>
-    </div>
+
+      {/* Mobile Instagram-like Layout */}
+      <div className="md:hidden">
+        {/* Mobile Profile Header */}
+        <div className="px-4 py-4">
+          {/* Profile Info Row */}
+          <div className="flex items-start gap-4 mb-4">
+            {/* Avatar */}
+            <Avatar className="w-20 h-20 border-2 border-background shadow-sm">
+              <AvatarImage
+                src={`https://superfan.alterwork.in/files/profilepic/${profileData?.display_name || params.username}.png`}
+                alt={profileData?.display_name || params.username}
+                onError={(e) => {
+                  e.currentTarget.src = "/placeholder.svg?height=80&width=80"
+                }}
+              />
+              <AvatarFallback className="text-2xl">
+                {profileData?.display_name?.charAt(0)?.toUpperCase() || params.username.charAt(0).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
+            
+            {/* Profile Stats */}
+            <div className="flex-1 flex flex-col">
+              <h1 className="text-xl font-semibold mb-2">
+                @{profileData?.display_name || params.username}
+              </h1>
+              
+              {/* Stats Row */}
+              <div className="flex gap-6 mb-3">
+                <div className="text-center">
+                  <div className="font-semibold text-lg">{formatNumber(profileData?.sessions || 0)}</div>
+                  <div className="text-xs text-muted-foreground">sessions</div>
+                </div>
+                <div className="text-center cursor-pointer" onClick={() => setActiveTab("followers")}>
+                  <div className="font-semibold text-lg">{formatNumber(profileData?.followers || 0)}</div>
+                  <div className="text-xs text-muted-foreground">followers</div>
+                </div>
+                <div className="text-center cursor-pointer" onClick={() => setActiveTab("following")}>
+                  <div className="font-semibold text-lg">{formatNumber(profileData?.following || 0)}</div>
+                  <div className="text-xs text-muted-foreground">following</div>
+                </div>
+              </div>
+              
+              {/* Action Buttons */}
+              {!isOwnProfile && currentUser && currentUser.displayName !== params.username ? (
+                <div className="flex gap-2">
+                  <Button
+                    variant={isFollowing ? "secondary" : "default"}
+                    onClick={isFollowing ? handleUnfollowProfile : handleFollow}
+                    disabled={isFollowingAction || !currentUser}
+                    className={`${!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""} flex-1 h-8 text-sm`}
+                    size="sm"
+                  >
+                    {isFollowingAction
+                      ? isFollowing
+                        ? "Unfollowing..."
+                        : "Following..."
+                      : isFollowing
+                        ? "Following"
+                        : "Follow"}
+                  </Button>
+                  <Button
+                    variant={isBlocked ? "outline" : "destructive"}
+                    onClick={() => (isBlocked ? handleUnblockUser(params.username) : handleBlockUser(params.username))}
+                    disabled={isBlockingAction || !currentUser}
+                    className="flex-1 h-8 text-sm"
+                    size="sm"
+                  >
+                    {isBlockingAction ? (isBlocked ? "Unblocking..." : "Blocking...") : isBlocked ? "Unblock" : "Block"}
+                  </Button>
+                </div>
+              ) : isOwnProfile ? (
+                <Button
+                  variant="outline"
+                  onClick={handleEditProfile}
+                  className="h-8 text-sm"
+                  size="sm"
+                >
+                  <Settings className="h-3 w-3 mr-1" />
+                  Edit Profile
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          
+          {/* About Section - Mobile */}
+          {aboutData && (
+            <div className="mb-4">
+              <div className="text-sm">
+                {aboutData.name && (
+                  <div className="font-semibold mb-1">{aboutData.name}</div>
+                )}
+                {aboutData.bio && (
+                  <div className="text-muted-foreground mb-2">{aboutData.bio}</div>
+                )}
+                {/* Social Links */}
+                {(aboutData.twitter_link || aboutData.youtube_link || aboutData.instagram_link) && (
+                  <div className="flex gap-3">
+                    {aboutData.twitter_link && (
+                      <a
+                        href={aboutData.twitter_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center w-8 h-8 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-colors"
+                        title="Twitter"
+                      >
+                        <Twitter className="w-4 h-4" />
+                      </a>
+                    )}
+                    {aboutData.youtube_link && (
+                      <a
+                        href={aboutData.youtube_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
+                        title="YouTube"
+                      >
+                        <Youtube className="w-4 h-4" />
+                      </a>
+                    )}
+                    {aboutData.instagram_link && (
+                      <a
+                        href={aboutData.instagram_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-full transition-colors"
+                        title="Instagram"
+                      >
+                        <Instagram className="w-4 h-4" />
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile Tabs */}
+        <div className="border-t border-border">
+          <div className="flex">
+            <button
+              onClick={() => setActiveTab("home")}
+              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "home" ? "border-primary text-primary" : "border-transparent text-muted-foreground"
+              }`}
+            >
+              Broadcasts
+            </button>
+            {isOwnProfile && (
+              <>
+                <button
+                  onClick={() => setActiveTab("followers")}
+                  className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === "followers" ? "border-primary text-primary" : "border-transparent text-muted-foreground"
+                  }`}
+                >
+                  Followers
+                </button>
+                <button
+                  onClick={() => setActiveTab("following")}
+                  className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${
+                    activeTab === "following" ? "border-primary text-primary" : "border-transparent text-muted-foreground"
+                  }`}
+                >
+                  Following
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile Content */}
+        <div className="px-4 py-4">
+          {activeTab === "home" && (
+            <div>
+              {isLoadingRecordings ? (
+                <div className="grid grid-cols-3 gap-1">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <div key={index} className="aspect-square bg-muted animate-pulse rounded"></div>
+                  ))}
+                </div>
+              ) : pastRecordings.length > 0 ? (
+                <div className="grid grid-cols-3 gap-1">
+                  {pastRecordings.map((video) => (
+                    <div
+                      key={video.id}
+                      className="aspect-square cursor-pointer relative group"
+                      onClick={() => handlePlayRecording(video)}
+                    >
+                      <img
+                        src={video.thumbnail || "/placeholder.svg"}
+                        alt={video.title}
+                        className="w-full h-full object-cover rounded"
+                        onError={(e) => {
+                          e.currentTarget.src = "/placeholder.svg?height=120&width=120&text=No Thumbnail"
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-all flex items-center justify-center">
+                        <Play className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground text-sm">No recent broadcasts.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "followers" && (
+            <div>
+              {isLoadingFollowers ? (
+                <div className="grid grid-cols-3 gap-3">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <div key={index} className="flex flex-col items-center animate-pulse">
+                      <div className="w-16 h-16 bg-muted rounded-full mb-2"></div>
+                      <div className="h-3 bg-muted rounded w-full"></div>
+                    </div>
+                  ))}
+                </div>
+              ) : followersList.length > 0 ? (
+                <div className="grid grid-cols-3 gap-3">
+                  {followersList.map((followerUsername) => (
+                    <div
+                      key={followerUsername}
+                      className="flex flex-col items-center cursor-pointer"
+                      onClick={() => router.push(`/profile/${followerUsername}`)}
+                    >
+                      <Avatar className="h-16 w-16 mb-2">
+                        <AvatarImage
+                          src={`https://superfan.alterwork.in/files/profilepic/${followerUsername}.png`}
+                          alt={followerUsername}
+                          onError={(e) => {
+                            e.currentTarget.src = "/placeholder.svg?height=64&width=64"
+                          }}
+                        />
+                        <AvatarFallback className="text-sm">{followerUsername.charAt(0).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <span className="text-xs font-medium text-center truncate w-full">@{followerUsername}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground text-sm">No followers yet</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === "following" && (
+            <div>
+              {isLoadingFollowing ? (
+                <div className="grid grid-cols-3 gap-3">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <div key={index} className="flex flex-col items-center animate-pulse">
+                      <div className="w-16 h-16 bg-muted rounded-full mb-2"></div>
+                      <div className="h-3 bg-muted rounded w-full mb-2"></div>
+                      <div className="h-6 bg-muted rounded w-full"></div>
+                    </div>
+                  ))}
+                </div>
+              ) : followingList.length > 0 ? (
+                <div className="grid grid-cols-3 gap-3">
+                  {followingList.map((followingUsername) => (
+                    <div key={followingUsername} className="flex flex-col items-center">
+                      <Avatar
+                        className="h-16 w-16 mb-2 cursor-pointer"
+                        onClick={() => router.push(`/profile/${followingUsername}`)}
+                      >
+                        <AvatarImage
+                          src={`https://superfan.alterwork.in/files/profilepic/${followingUsername}.png`}
+                          alt={followingUsername}
+                          onError={(e) => {
+                            e.currentTarget.src = "/placeholder.svg?height=64&width=64"
+                          }}
+                        />
+                        <AvatarFallback className="text-sm">{followingUsername.charAt(0).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <span
+                        className="text-xs font-medium text-center truncate w-full mb-2 cursor-pointer"
+                        onClick={() => router.push(`/profile/${followingUsername}`)}
+                      >
+                        @{followingUsername}
+                      </span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full text-xs h-6"
+                        onClick={() => handleUnfollow(followingUsername)}
+                        disabled={unfollowingUsers.has(followingUsername)}
+                      >
+                        {unfollowingUsers.has(followingUsername) ? "Unfollowing..." : "Unfollow"}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground text-sm">Not following anyone yet</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Edit Profile Modal */}
+      <EditProfileModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        profileData={profileData}
+        onSave={handleSaveProfile}
+        initialAboutData={aboutData}
+      />
+
+      {/* Mobile Video Modal */}
+      {isVideoModalOpen && selectedVideo && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center md:hidden">
+          <div className="w-full h-full flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 bg-black/50">
+              <h3 className="text-white font-semibold truncate">{selectedVideo.title}</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsVideoModalOpen(false)}
+                className="text-white hover:bg-white/20"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            
+            {/* Video Player */}
+            <div className="flex-1 flex items-center justify-center p-4">
+              <div className="w-full max-w-lg">
+                <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                  <img
+                    src={selectedVideo.thumbnail || "/placeholder.svg"}
+                    alt={selectedVideo.title}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.src = "/placeholder.svg?height=400&width=600&text=Video"
+                    }}
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Button
+                      size="lg"
+                      className="bg-white/20 hover:bg-white/30 text-white border-0"
+                      onClick={() => {
+                        const sourceId = selectedVideo.hookId || selectedVideo.id
+                        window.open(`/viewer?type=storage&video=${sourceId}`, "_blank")
+                      }}
+                    >
+                      <Play className="h-8 w-8 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Video Info */}
+                <div className="mt-4 text-white">
+                  <h4 className="font-semibold text-lg mb-2">{selectedVideo.title}</h4>
+                  <div className="flex items-center gap-4 text-sm text-gray-300">
+                    <span>{formatNumber(selectedVideo.views)} views</span>
+                    <span>{selectedVideo.date}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </MobileLayout>
   )
 }

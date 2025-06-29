@@ -23,6 +23,7 @@ import {
 } from "firebase/auth"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { buildApiUrl, API_CONFIG } from "@/lib/config"
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
@@ -122,7 +123,7 @@ export default function LoginPage() {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
 
-      const response = await fetch("https://superfan.alterwork.in/api/check_username", {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.CHECK_USERNAME), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -175,7 +176,7 @@ export default function LoginPage() {
       }
       console.log("Payload for create_user:", payload) // Added for debugging
 
-      const response = await fetch("https://superfan.alterwork.in/api/create_user", {
+      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.CREATE_USER), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
