@@ -12,6 +12,8 @@ import { ProfileTabs } from "@/components/profile-tabs"
 import { EditProfileModal } from "@/components/edit-profile-modal"
 import { MobileLayout } from "@/components/mobile-layout"
 import { useUserStore } from "@/lib/user-store"
+import { FollowersModal } from "@/components/followers-modal"
+import { FollowingModal } from "@/components/following-modal"
 
 interface UserProfileData {
   UID: string
@@ -53,7 +55,9 @@ export default function ProfilePage({ params }: { params: { username: string } }
   const [unfollowingUsers, setUnfollowingUsers] = useState<Set<string>>(new Set())
   const [selectedVideo, setSelectedVideo] = useState<any>(null)
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false)
-  
+  const [isFollowersModalOpen, setIsFollowersModalOpen] = useState(false)
+  const [isFollowingModalOpen, setIsFollowingModalOpen] = useState(false)
+
   // Use the singleton user store
   const { updateFollowStatus } = useUserStore()
 
@@ -108,14 +112,9 @@ export default function ProfilePage({ params }: { params: { username: string } }
     setIsLoadingProfile(true)
     try {
       const headers = await getAuthHeaders()
-      const response = await fetch("https://superfan.alterwork.in/api/get_user", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            username: params.username,
-          },
-        }),
+      const response = await fetch(`https://superfan.alterwork.in/api/users/${params.username}`, {
+        method: "GET",
+        headers
       })
 
       if (response.ok) {
@@ -144,14 +143,9 @@ export default function ProfilePage({ params }: { params: { username: string } }
     setIsLoadingAbout(true)
     try {
       const headers = await getAuthHeaders()
-      const response = await fetch("https://superfan.alterwork.in/api/get_about", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            username: params.username,
-          },
-        }),
+      const response = await fetch(`https://superfan.alterwork.in/api/users/${params.username}/about`, {
+        method: "GET",
+        headers
       })
 
       if (response.ok) {
@@ -174,14 +168,9 @@ export default function ProfilePage({ params }: { params: { username: string } }
     setIsLoadingRecordings(true)
     try {
       const headers = await getAuthHeaders()
-      const response = await fetch("https://superfan.alterwork.in/api/get_rec", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            username: params.username,
-          },
-        }),
+      const response = await fetch(`https://superfan.alterwork.in/api/recordings/${params.username}`, {
+        method: "GET",
+        headers
       })
 
       if (response.ok) {
@@ -236,8 +225,8 @@ export default function ProfilePage({ params }: { params: { username: string } }
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 10000)
 
-      const response = await fetch("https://superfan.alterwork.in/api/fetch_blocklist", {
-        method: "POST",
+      const response = await fetch(`https://superfan.alterwork.in/api/blocks`, {
+        method: "GET",
         headers,
         body: JSON.stringify({
           payload: {
@@ -607,14 +596,9 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
     try {
       const headers = await getAuthHeaders()
-      const response = await fetch("https://superfan.alterwork.in/api/did_follow", {
-        method: "POST",
+      const response = await fetch(`https://superfan.alterwork.in/api//users/${params.username}/follow/status`, {
+        method: "GET",
         headers,
-        body: JSON.stringify({
-          payload: {
-            did_follow: params.username,
-          },
-        }),
       })
 
       if (response.ok) {
@@ -637,14 +621,9 @@ export default function ProfilePage({ params }: { params: { username: string } }
     }
     try {
       const headers = await getAuthHeaders()
-      const response = await fetch("https://superfan.alterwork.in/api/is_blocklist", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            blocklist: params.username,
-          },
-        }),
+      const response = await fetch(`https://superfan.alterwork.in/api/blocks/${params.username}/status`, {
+        method: "GET",
+        headers
       })
 
       if (response.ok) {
@@ -696,10 +675,6 @@ export default function ProfilePage({ params }: { params: { username: string } }
     console.log("Profile updated:", updatedData)
   }
 
-  const handleEditPanels = () => {
-    alert("Edit Panels functionality coming soon!")
-  }
-
   console.log("Final render state:")
   console.log("- isOwnProfile:", isOwnProfile)
   console.log("- currentUser:", currentUser?.displayName)
@@ -731,6 +706,10 @@ export default function ProfilePage({ params }: { params: { username: string } }
       setBlacklistedUsers([])
     }
   }, [currentUser, isOwnProfile, params.username])
+
+  const handleUserClick = (clickedUsername: string) => {
+    router.push(`/profile/${clickedUsername}`)
+  }
 
   return (
     <MobileLayout>
@@ -777,9 +756,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
           <div className="flex-1 flex flex-row items-center justify-between gap-4 w-full">
             <div className="flex-1">
               <div className="flex flex-row items-center gap-2 mb-1">
-                <h1 className="text-3xl font-bold">
-                  @{profileData?.display_name || params.username}
-                </h1>
+                <h1 className="text-3xl font-bold">@{profileData?.display_name || params.username}</h1>
                 {profileData?.status === "live" && (
                   <Badge variant="destructive" className="animate-pulse w-fit">
                     <div className="w-2 h-2 bg-white rounded-full mr-1"></div>
@@ -788,14 +765,30 @@ export default function ProfilePage({ params }: { params: { username: string } }
                 )}
               </div>
               <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground">
-                <span>
+                <span
+                  className="cursor-pointer"
+                  onClick={() => {
+                    if (profileData?.followers !== undefined) {
+                      setIsFollowersModalOpen(true)
+                      fetchFollowers()
+                    }
+                  }}
+                >
                   <strong>{formatNumber(profileData?.followers || 0)}</strong> followers
                 </span>
-                <span>
+                <span
+                  className="cursor-pointer"
+                  onClick={() => {
+                    if (profileData?.following !== undefined) {
+                      setIsFollowingModalOpen(true)
+                      fetchFollowing()
+                    }
+                  }}
+                >
                   <strong>{formatNumber(profileData?.following || 0)}</strong> following
                 </span>
                 <span>
-                  <strong>{formatNumber(profileData?.sessions || 0)}</strong> Live sessions
+                  <strong>{formatNumber(pastRecordings.length)}</strong> Live sessions
                 </span>
               </div>
             </div>
@@ -846,16 +839,9 @@ export default function ProfilePage({ params }: { params: { username: string } }
             onPlayRecording={handlePlayRecording}
             profileData={profileData}
             onEditProfile={handleEditProfile}
-            onEditPanels={handleEditPanels}
             blacklistedUsers={blacklistedUsers}
             isLoadingBlocklist={isLoadingBlocklist}
             handleUnblacklistUser={handleUnblacklistUser}
-            followersList={followersList}
-            followingList={followingList}
-            isLoadingFollowers={isLoadingFollowers}
-            isLoadingFollowing={isLoadingFollowing}
-            fetchFollowers={fetchFollowers}
-            fetchFollowing={fetchFollowing}
             aboutData={aboutData}
             isLoadingAbout={isLoadingAbout}
             fetchAboutDetails={fetchAboutDetails}
@@ -870,138 +856,131 @@ export default function ProfilePage({ params }: { params: { username: string } }
       {/* Mobile Instagram-like Layout */}
       <div className="md:hidden">
         {/* Mobile Profile Header */}
-        <div className="px-4 py-4">
+        <div className="px-4 py-4 relative">
+          {" "}
+          {/* Added relative for absolute positioning of button */}
+          {isOwnProfile && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute top-4 right-4 h-8 w-8 text-muted-foreground"
+              onClick={handleEditProfile}
+            >
+              <Settings className="h-5 w-5" />
+              <span className="sr-only">Edit Profile</span>
+            </Button>
+          )}
           {/* Profile Info Row */}
           <div className="flex items-start gap-4 mb-4">
             {/* Avatar */}
-            <Avatar className="w-20 h-20 border-2 border-background shadow-sm">
+            <Avatar className="w-16 h-16 border-2 border-background shadow-sm">
+              {" "}
+              {/* Reduced size */}
               <AvatarImage
                 src={`https://superfan.alterwork.in/files/profilepic/${profileData?.display_name || params.username}.png`}
                 alt={profileData?.display_name || params.username}
                 onError={(e) => {
-                  e.currentTarget.src = "/placeholder.svg?height=80&width=80"
+                  e.currentTarget.src = "/placeholder.svg?height=64&width=64" // Updated placeholder size
                 }}
               />
-              <AvatarFallback className="text-2xl">
+              <AvatarFallback className="text-xl">
+                {" "}
+                {/* Adjusted fallback text size */}
                 {profileData?.display_name?.charAt(0)?.toUpperCase() || params.username.charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
-            
-            {/* Profile Stats */}
-            <div className="flex-1 flex flex-col">
-              <h1 className="text-xl font-semibold mb-2">
-                @{profileData?.display_name || params.username}
-              </h1>
-              
+
+            {/* Profile Stats and Buttons */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {" "}
+              {/* Added min-w-0 to prevent overflow */}
+              <div className="flex items-center gap-2 mb-2">
+                <h1 className="text-xl font-semibold truncate">@{profileData?.display_name || params.username}</h1>{" "}
+                {/* Added truncate */}
+                {profileData?.status === "live" && (
+                  <Badge variant="destructive" className="animate-pulse text-xs flex-shrink-0">
+                    {" "}
+                    {/* Added flex-shrink-0 */}
+                    <div className="w-1.5 h-1.5 bg-white rounded-full mr-1"></div>
+                    LIVE
+                  </Badge>
+                )}
+              </div>
               {/* Stats Row */}
-              <div className="flex gap-6 mb-3">
+              <div className="flex gap-4 mb-3">
+                {" "}
+                {/* Reduced gap */}
                 <div className="text-center">
-                  <div className="font-semibold text-lg">{formatNumber(profileData?.sessions || 0)}</div>
+                  <div className="font-semibold text-lg">{formatNumber(pastRecordings.length)}</div>
                   <div className="text-xs text-muted-foreground">sessions</div>
                 </div>
-                <div className="text-center cursor-pointer" onClick={() => setActiveTab("followers")}>
+                <div
+                  className="text-center cursor-pointer"
+                  onClick={() => {
+                    if (profileData?.followers !== undefined) {
+                      setIsFollowersModalOpen(true)
+                      fetchFollowers()
+                    }
+                  }}
+                >
                   <div className="font-semibold text-lg">{formatNumber(profileData?.followers || 0)}</div>
                   <div className="text-xs text-muted-foreground">followers</div>
                 </div>
-                <div className="text-center cursor-pointer" onClick={() => setActiveTab("following")}>
+                <div
+                  className="text-center cursor-pointer"
+                  onClick={() => {
+                    if (profileData?.following !== undefined) {
+                      setIsFollowingModalOpen(true)
+                      fetchFollowing()
+                    }
+                  }}
+                >
                   <div className="font-semibold text-lg">{formatNumber(profileData?.following || 0)}</div>
                   <div className="text-xs text-muted-foreground">following</div>
                 </div>
               </div>
-              
-              {/* Action Buttons */}
-              {!isOwnProfile && currentUser && currentUser.displayName !== params.username ? (
-                <div className="flex gap-2">
-                  <Button
-                    variant={isFollowing ? "secondary" : "default"}
-                    onClick={isFollowing ? handleUnfollowProfile : handleFollow}
-                    disabled={isFollowingAction || !currentUser}
-                    className={`${!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""} flex-1 h-8 text-sm`}
-                    size="sm"
-                  >
-                    {isFollowingAction
-                      ? isFollowing
-                        ? "Unfollowing..."
-                        : "Following..."
-                      : isFollowing
-                        ? "Following"
-                        : "Follow"}
-                  </Button>
-                  <Button
-                    variant={isBlocked ? "outline" : "destructive"}
-                    onClick={() => (isBlocked ? handleUnblockUser(params.username) : handleBlockUser(params.username))}
-                    disabled={isBlockingAction || !currentUser}
-                    className="flex-1 h-8 text-sm"
-                    size="sm"
-                  >
-                    {isBlockingAction ? (isBlocked ? "Unblocking..." : "Blocking...") : isBlocked ? "Unblock" : "Block"}
-                  </Button>
-                </div>
-              ) : isOwnProfile ? (
-                <Button
-                  variant="outline"
-                  onClick={handleEditProfile}
-                  className="h-8 text-sm"
-                  size="sm"
-                >
-                  <Settings className="h-3 w-3 mr-1" />
-                  Edit Profile
-                </Button>
-              ) : null}
-            </div>
-          </div>
-          
-          {/* About Section - Mobile */}
-          {aboutData && (
-            <div className="mb-4">
-              <div className="text-sm">
-                {aboutData.name && (
-                  <div className="font-semibold mb-1">{aboutData.name}</div>
-                )}
-                {aboutData.bio && (
-                  <div className="text-muted-foreground mb-2">{aboutData.bio}</div>
-                )}
-                {/* Social Links */}
-                {(aboutData.twitter_link || aboutData.youtube_link || aboutData.instagram_link) && (
-                  <div className="flex gap-3">
-                    {aboutData.twitter_link && (
-                      <a
-                        href={aboutData.twitter_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center w-8 h-8 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-colors"
-                        title="Twitter"
-                      >
-                        <Twitter className="w-4 h-4" />
-                      </a>
-                    )}
-                    {aboutData.youtube_link && (
-                      <a
-                        href={aboutData.youtube_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
-                        title="YouTube"
-                      >
-                        <Youtube className="w-4 h-4" />
-                      </a>
-                    )}
-                    {aboutData.instagram_link && (
-                      <a
-                        href={aboutData.instagram_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-full transition-colors"
-                        title="Instagram"
-                      >
-                        <Instagram className="w-4 h-4" />
-                      </a>
-                    )}
-                  </div>
-                )}
+              {/* Action Buttons Row */}
+              <div className="flex gap-2 w-full">
+                {!isOwnProfile && currentUser && currentUser.displayName !== params.username ? (
+                  <>
+                    <Button
+                      variant={isFollowing ? "secondary" : "default"}
+                      onClick={isFollowing ? handleUnfollowProfile : handleFollow}
+                      disabled={isFollowingAction || !currentUser}
+                      className={`${!isFollowing ? "bg-gradient-to-r from-orange-600 to-orange-500" : ""} flex-1 h-8 text-sm`}
+                      size="sm"
+                    >
+                      {isFollowingAction
+                        ? isFollowing
+                          ? "Unfollowing..."
+                          : "Following..."
+                        : isFollowing
+                          ? "Following"
+                          : "Follow"}
+                    </Button>
+                    <Button
+                      variant={isBlocked ? "outline" : "destructive"}
+                      onClick={() =>
+                        isBlocked ? handleUnblockUser(params.username) : handleBlockUser(params.username)
+                      }
+                      disabled={isBlockingAction || !currentUser}
+                      className="flex-1 h-8 text-sm"
+                      size="sm"
+                    >
+                      {isBlockingAction
+                        ? isBlocked
+                          ? "Unblocking..."
+                          : "Blocking..."
+                        : isBlocked
+                          ? "Unblock"
+                          : "Block"}
+                    </Button>
+                  </>
+                ) : null}
               </div>
             </div>
-          )}
+          </div>
+          {/* About Section - Mobile (No direct content here, it's in the tab) */}
         </div>
 
         {/* Mobile Tabs */}
@@ -1015,25 +994,23 @@ export default function ProfilePage({ params }: { params: { username: string } }
             >
               Broadcasts
             </button>
+            <button
+              onClick={() => setActiveTab("about")}
+              className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "about" ? "border-primary text-primary" : "border-transparent text-muted-foreground"
+              }`}
+            >
+              About
+            </button>
             {isOwnProfile && (
-              <>
-                <button
-                  onClick={() => setActiveTab("followers")}
-                  className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === "followers" ? "border-primary text-primary" : "border-transparent text-muted-foreground"
-                  }`}
-                >
-                  Followers
-                </button>
-                <button
-                  onClick={() => setActiveTab("following")}
-                  className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === "following" ? "border-primary text-primary" : "border-transparent text-muted-foreground"
-                  }`}
-                >
-                  Following
-                </button>
-              </>
+              <button
+                onClick={() => setActiveTab("blocklist")}
+                className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "blocklist" ? "border-primary text-primary" : "border-transparent text-muted-foreground"
+                }`}
+              >
+                Blocked
+              </button>
             )}
           </div>
         </div>
@@ -1078,50 +1055,95 @@ export default function ProfilePage({ params }: { params: { username: string } }
             </div>
           )}
 
-          {activeTab === "followers" && (
+          {activeTab === "about" && (
             <div>
-              {isLoadingFollowers ? (
-                <div className="grid grid-cols-3 gap-3">
-                  {Array.from({ length: 6 }).map((_, index) => (
-                    <div key={index} className="flex flex-col items-center animate-pulse">
-                      <div className="w-16 h-16 bg-muted rounded-full mb-2"></div>
-                      <div className="h-3 bg-muted rounded w-full"></div>
-                    </div>
-                  ))}
+              {!auth.currentUser ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground text-sm">Login to see user's details</p>
                 </div>
-              ) : followersList.length > 0 ? (
-                <div className="grid grid-cols-3 gap-3">
-                  {followersList.map((followerUsername) => (
-                    <div
-                      key={followerUsername}
-                      className="flex flex-col items-center cursor-pointer"
-                      onClick={() => router.push(`/profile/${followerUsername}`)}
-                    >
-                      <Avatar className="h-16 w-16 mb-2">
-                        <AvatarImage
-                          src={`https://superfan.alterwork.in/files/profilepic/${followerUsername}.png`}
-                          alt={followerUsername}
-                          onError={(e) => {
-                            e.currentTarget.src = "/placeholder.svg?height=64&width=64"
-                          }}
-                        />
-                        <AvatarFallback className="text-sm">{followerUsername.charAt(0).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <span className="text-xs font-medium text-center truncate w-full">@{followerUsername}</span>
+              ) : isLoadingAbout ? (
+                <div className="space-y-3 animate-pulse">
+                  <div className="h-3 bg-muted rounded w-3/4"></div>
+                  <div className="h-3 bg-muted rounded w-full"></div>
+                  <div className="h-3 bg-muted rounded w-1/2"></div>
+                  <div className="h-3 bg-muted rounded w-2/3"></div>
+                  <div className="h-3 bg-muted rounded w-full"></div>
+                </div>
+              ) : aboutData ? (
+                <div className="space-y-4 text-sm text-muted-foreground">
+                  <div>
+                    <h3 className="font-semibold text-foreground mb-1">Name</h3>
+                    <p>{aboutData.name || "-"}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground mb-1">Bio</h3>
+                    <p>{aboutData.bio || "-"}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground mb-1">Email</h3>
+                    <p>{aboutData.email || "-"}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground mb-1">Channel Category</h3>
+                    <p>{aboutData.channel_category || "-"}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground mb-1">Stream Language</h3>
+                    <p>{aboutData.stream_Language || "-"}</p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground mb-2">Social Links</h3>
+                    <div className="flex flex-wrap gap-3">
+                      {aboutData.twitter_link ? (
+                        <a
+                          href={aboutData.twitter_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center w-8 h-8 bg-blue-500 hover:bg-blue-600 text-white rounded-full transition-colors"
+                          title="Twitter"
+                        >
+                          <Twitter className="w-4 h-4" />
+                        </a>
+                      ) : null}
+                      {aboutData.youtube_link ? (
+                        <a
+                          href={aboutData.youtube_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center w-8 h-8 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors"
+                          title="YouTube"
+                        >
+                          <Youtube className="w-4 h-4" />
+                        </a>
+                      ) : null}
+                      {aboutData.instagram_link ? (
+                        <a
+                          href={aboutData.instagram_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-full transition-colors"
+                          title="Instagram"
+                        >
+                          <Instagram className="w-4 h-4" />
+                        </a>
+                      ) : null}
+                      {!aboutData.twitter_link && !aboutData.youtube_link && !aboutData.instagram_link && (
+                        <span className="text-sm text-muted-foreground">No social links</span>
+                      )}
                     </div>
-                  ))}
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-muted-foreground text-sm">No followers yet</p>
+                  <p className="text-muted-foreground text-sm">Failed to load about information.</p>
                 </div>
               )}
             </div>
           )}
 
-          {activeTab === "following" && (
+          {activeTab === "blocklist" && isOwnProfile && (
             <div>
-              {isLoadingFollowing ? (
+              {isLoadingBlocklist ? (
                 <div className="grid grid-cols-3 gap-3">
                   {Array.from({ length: 6 }).map((_, index) => (
                     <div key={index} className="flex flex-col items-center animate-pulse">
@@ -1131,44 +1153,35 @@ export default function ProfilePage({ params }: { params: { username: string } }
                     </div>
                   ))}
                 </div>
-              ) : followingList.length > 0 ? (
+              ) : blacklistedUsers.length > 0 ? (
                 <div className="grid grid-cols-3 gap-3">
-                  {followingList.map((followingUsername) => (
-                    <div key={followingUsername} className="flex flex-col items-center">
-                      <Avatar
-                        className="h-16 w-16 mb-2 cursor-pointer"
-                        onClick={() => router.push(`/profile/${followingUsername}`)}
-                      >
+                  {blacklistedUsers.map((blockedUsername) => (
+                    <div key={blockedUsername} className="flex flex-col items-center">
+                      <Avatar className="h-16 w-16 mb-2">
                         <AvatarImage
-                          src={`https://superfan.alterwork.in/files/profilepic/${followingUsername}.png`}
-                          alt={followingUsername}
+                          src={`https://superfan.alterwork.in/files/profilepic/${blockedUsername}.png`}
+                          alt={blockedUsername}
                           onError={(e) => {
                             e.currentTarget.src = "/placeholder.svg?height=64&width=64"
                           }}
                         />
-                        <AvatarFallback className="text-sm">{followingUsername.charAt(0).toUpperCase()}</AvatarFallback>
+                        <AvatarFallback className="text-sm">{blockedUsername.charAt(0).toUpperCase()}</AvatarFallback>
                       </Avatar>
-                      <span
-                        className="text-xs font-medium text-center truncate w-full mb-2 cursor-pointer"
-                        onClick={() => router.push(`/profile/${followingUsername}`)}
-                      >
-                        @{followingUsername}
-                      </span>
+                      <span className="text-xs font-medium text-center truncate w-full mb-2">@{blockedUsername}</span>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="w-full text-xs h-6"
-                        onClick={() => handleUnfollow(followingUsername)}
-                        disabled={unfollowingUsers.has(followingUsername)}
+                        className="w-full text-xs h-6 bg-transparent"
+                        onClick={() => handleUnblacklistUser(blockedUsername)}
                       >
-                        {unfollowingUsers.has(followingUsername) ? "Unfollowing..." : "Unfollow"}
+                        Unblock
                       </Button>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-muted-foreground text-sm">Not following anyone yet</p>
+                  <p className="text-muted-foreground text-sm">No blocked users</p>
                 </div>
               )}
             </div>
@@ -1201,7 +1214,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
                 <X className="h-5 w-5" />
               </Button>
             </div>
-            
+
             {/* Video Player */}
             <div className="flex-1 flex items-center justify-center p-4">
               <div className="w-full max-w-lg">
@@ -1227,7 +1240,7 @@ export default function ProfilePage({ params }: { params: { username: string } }
                     </Button>
                   </div>
                 </div>
-                
+
                 {/* Video Info */}
                 <div className="mt-4 text-white">
                   <h4 className="font-semibold text-lg mb-2">{selectedVideo.title}</h4>
@@ -1241,6 +1254,28 @@ export default function ProfilePage({ params }: { params: { username: string } }
           </div>
         </div>
       )}
+
+      {/* Followers Modal */}
+      <FollowersModal
+        isOpen={isFollowersModalOpen}
+        onClose={() => setIsFollowersModalOpen(false)}
+        followersList={followersList}
+        isLoadingFollowers={isLoadingFollowers}
+        fetchFollowers={fetchFollowers}
+        onUserClick={handleUserClick}
+      />
+
+      {/* Following Modal */}
+      <FollowingModal
+        isOpen={isFollowingModalOpen}
+        onClose={() => setIsFollowingModalOpen(false)}
+        followingList={followingList}
+        isLoadingFollowing={isLoadingFollowing}
+        fetchFollowing={fetchFollowing}
+        onUserClick={handleUserClick}
+        onUnfollow={handleUnfollow}
+        unfollowingUsers={unfollowingUsers}
+      />
     </MobileLayout>
   )
 }

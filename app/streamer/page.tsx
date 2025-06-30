@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Mic, MicOff, Video, VideoOff, Play, Square, Share, Users, Camera, Settings, Radio } from "lucide-react"
+import { Mic, MicOff, Video, VideoOff, Play, Square, Share, Users } from "lucide-react"
 import { Navigation } from "@/components/navigation"
 import { auth } from "@/lib/firebase"
 import { onAuthStateChanged } from "firebase/auth"
@@ -17,13 +17,6 @@ import { StreamDetailsModal } from "@/components/stream-details-modal"
 import { DeviceSelectionModal } from "@/components/device-selection-modal"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { cn } from "@/lib/utils"
-import { Loader2 } from "lucide-react"
 
 export default function StreamerPage() {
   const [isStreaming, setIsStreaming] = useState(false)
@@ -58,6 +51,7 @@ export default function StreamerPage() {
   const [isCheckingStatus, setIsCheckingStatus] = useState(false)
   const [showAlreadyLiveAlert, setShowAlreadyLiveAlert] = useState(false)
 
+  // New states for existing stream details and stream type
   const [existingHookId, setExistingHookId] = useState<string | null>(null)
   const [existingStreamTitle, setExistingStreamTitle] = useState<string>("")
   const [existingStreamDescription, setExistingStreamDescription] = useState<string>("")
@@ -65,6 +59,7 @@ export default function StreamerPage() {
   const [streamType, setStreamType] = useState<"new" | "old">("new")
   const [currentHookId, setCurrentHookId] = useState<string | null>(null)
 
+  // States to pass to StreamDetailsModal for initial values
   const [modalTitle, setModalTitle] = useState("")
   const [modalDescription, setModalDescription] = useState("")
   const [modalTags, setModalTags] = useState<string[]>([])
@@ -74,6 +69,7 @@ export default function StreamerPage() {
   const logsRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
+  // WebRTC and Janus related refs
   const janusSessionIdRef = useRef<string | null>(null)
   const videoRoomPluginHandleRef = useRef<string | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
@@ -87,8 +83,7 @@ export default function StreamerPage() {
   const FLASK_SERVER_URL = "https://superfan.alterwork.in/api/create_stream"
   const GET_LIVE_DET_URL = "https://superfan.alterwork.in/api/get_live_det"
 
-  const [deviceSelectionOpen, setDeviceSelectionOpen] = useState(false)
-
+  // Helper function to get auth headers
   const getAuthHeaders = async () => {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -108,6 +103,7 @@ export default function StreamerPage() {
     return headers
   }
 
+  // Firebase authentication check and set current user display name
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
@@ -123,12 +119,14 @@ export default function StreamerPage() {
     return () => unsubscribe()
   }, [router])
 
+  // Trigger initial flow when firebaseUid is available
   useEffect(() => {
     if (firebaseUid && currentUserDisplayName) {
       checkUserStatus(currentUserDisplayName)
     }
   }, [firebaseUid, currentUserDisplayName])
 
+  // Function to fetch live stream details for an existing session
   const fetchLiveStreamDetails = async (roomId: string) => {
     log(`Fetching live stream details for room ID: ${roomId}`)
     try {
@@ -164,6 +162,7 @@ export default function StreamerPage() {
     }
   }
 
+  // Function to check user status
   const checkUserStatus = async (username: string) => {
     if (!username || !firebaseUid) return
 
@@ -248,12 +247,14 @@ export default function StreamerPage() {
     }
   }, [firebaseUid])
 
+  // Auto-scroll logs
   useEffect(() => {
     if (logsRef.current) {
       logsRef.current.scrollTop = logsRef.current.scrollHeight
     }
   }, [logs])
 
+  // Stream duration timer
   useEffect(() => {
     let timer: NodeJS.Timeout
     let startTime: number
@@ -278,15 +279,47 @@ export default function StreamerPage() {
     }
   }, [isStreaming])
 
+  // Fetch view count periodically when streaming
+  const fetchViewCount = async () => {
+    if (!createdRoomId) return
+
+    try {
+      const headers = await getAuthHeaders()
+
+      const response = await fetch("https://superfan.alterwork.in/api/get_views", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          payload: {
+            room_id: createdRoomId,
+          },
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Streamer view count data:", data)
+
+        if (data.views !== undefined) {
+          setViewers(data.views)
+        }
+      } else {
+        console.error("Failed to fetch view count:", response.status, response.statusText)
+      }
+    } catch (error) {
+      console.error("Error fetching view count:", error)
+    }
+  }
+
   useEffect(() => {
     if (isStreaming && createdRoomId) {
       fetchViewCount()
-
       const interval = setInterval(fetchViewCount, 10000)
       return () => clearInterval(interval)
     }
   }, [isStreaming, createdRoomId])
 
+  // Simulate other real-time updates
   useEffect(() => {
     const interval = setInterval(() => {
       setInternetStrength((prev) => Math.max(60, Math.min(100, prev + Math.floor(Math.random() * 10) - 5)))
@@ -296,6 +329,7 @@ export default function StreamerPage() {
     return () => clearInterval(interval)
   }, [])
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (isStreaming || janusSessionIdRef.current) {
@@ -579,19 +613,67 @@ export default function StreamerPage() {
 
   const createPermanentJanusRoom = async (roomId: string) => {
     if (!videoRoomPluginHandleRef.current) throw new Error("Streamer: Plugin handle not available for room creation")
+    if (!janusSessionIdRef.current) throw new Error("Streamer: Janus session ID not available for recording directory")
 
-    log(`Attempting to create/configure permanent room: ${roomId}`)
+    // First, check if the room exists and destroy it if it does
+    log(`[Step 1/3] Checking if room ${roomId} exists and attempting to destroy it if it does...`)
+    try {
+      const existsMsg = {
+        janus: "message",
+        transaction: `exists_room_${Date.now()}`,
+        body: {
+          request: "exists",
+          room: roomId,
+        },
+      }
+      const existsResponse = await sendToProxy(
+        `/${janusSessionIdRef.current}/${videoRoomPluginHandleRef.current}`,
+        existsMsg,
+      )
+
+      if (existsResponse?.plugindata?.data?.exists === true) {
+        log(`[Step 2/3] Room ${roomId} exists. Attempting to destroy...`)
+        const destroyMsg = {
+          janus: "message",
+          transaction: `destroy_room_${Date.now()}`,
+          body: {
+            request: "destroy",
+            room: roomId,
+            permanent: false, // Assuming it's not a permanent room that needs to be permanently removed from config
+          },
+        }
+        const destroyResponse = await sendToProxy(
+          `/${janusSessionIdRef.current}/${videoRoomPluginHandleRef.current}`,
+          destroyMsg,
+        )
+        if (destroyResponse?.plugindata?.data?.destroyed === "ok") {
+          log(`[Step 2/3] Successfully destroyed room ${roomId}.`)
+        } else {
+          log(
+            `[Step 2/3] Failed to destroy existing room ${roomId}. Reason: ${destroyResponse?.error?.reason || "Unknown"}`,
+          )
+          // Optionally throw an error or handle this case if destruction is critical
+        }
+      } else {
+        log(`[Step 1/3] Room ${roomId} does not exist. Proceeding to creation.`)
+      }
+    } catch (error: any) {
+      log(`[Step 1/3] Error checking or destroying room: ${error.message}. Proceeding to creation.`)
+      // Continue even if check/destroy fails, creation might still work
+    }
+
+    log(`[Step 3/3] Attempting to create/configure permanent room: ${roomId}`)
     const createRoomMsg = {
       janus: "message",
       transaction: `create_room_${Date.now()}`,
       body: {
         request: "create",
         room: roomId,
-        permanent: true,
+        permanent: false,
         description: "A permanent test room for alphanumeric IDs",
         publishers: 1,
         record: true,
-        rec_dir: "/root/superfan_complete/recordings_raw",
+        rec_dir: "/root/superfan_complete/recordings_raw/" + janusSessionIdRef.current,
         bitrate: 5000000,
       },
     }
@@ -675,6 +757,7 @@ export default function StreamerPage() {
     }
   }
 
+  // Function to initiate the stream setup for a new stream (opens modal)
   const handleInitialStartStreamSetup = () => {
     setModalTitle("")
     setModalDescription("")
@@ -684,6 +767,7 @@ export default function StreamerPage() {
     setShowStreamDetailsModal(true)
   }
 
+  // Function called when "Start Stream" is clicked inside StreamDetailsModal
   const handleStreamDetailsConfirmed = async (details: {
     title: string
     description: string
@@ -718,18 +802,8 @@ export default function StreamerPage() {
     setIsLoading(false)
   }
 
-  const handleDevicesSelected = async (videoDeviceId: string | null, audioDeviceId: string | null) => {
-    setSelectedVideoDeviceId(videoDeviceId)
-    setSelectedAudioDeviceId(audioDeviceId)
-    setShowDeviceSelectionModal(false)
-
-    // Small delay to ensure the modal is closed
-    setTimeout(() => {
-      startStreaming(videoDeviceId, audioDeviceId)
-    }, 100)
-  }
-
-  const startStreaming = async (videoDeviceId: string | null, audioDeviceId: string | null) => {
+  // Modified startStreaming to accept device IDs as arguments
+  const startStreaming = async (initialVideoDeviceId: string | null, initialAudioDeviceId: string | null) => {
     if (!title.trim()) {
       alert("Please enter a stream title")
       setIsLoading(false)
@@ -742,79 +816,61 @@ export default function StreamerPage() {
     }
 
     log(`Streamer: Starting stream: "${title}" (Type: ${streamType})`)
-    log(`Streamer: Using video device: ${videoDeviceId}`)
-    log(`Streamer: Using audio device: ${audioDeviceId}`)
     setIsLoading(true)
 
+    log(
+      `Attempting to start stream with initialVideoDeviceId: ${initialVideoDeviceId}, initialAudioDeviceId: ${initialAudioDeviceId}`,
+    )
+
     try {
-      // If we already have a valid stream, use it
-      if (localStreamRef.current && localStreamRef.current.active) {
-        log("Using existing active stream")
-        const videoTrack = localStreamRef.current.getVideoTracks()[0]
-        const audioTrack = localStreamRef.current.getAudioTracks()[0]
-        
-        if (videoTrack && audioTrack) {
-          log(`Using existing tracks - Video: ${videoTrack.label}, Audio: ${audioTrack.label}`)
-          
-          await createJanusSession()
-          await attachVideoRoomPlugin()
-
-          const userRoomId = firebaseUid
-          if (!userRoomId) {
-            throw new Error("User ID not available. Please try logging in again.")
-          }
-
-          setCreatedRoomId(userRoomId)
-          createdRoomIdRef.current = userRoomId
-          log(`Streamer: Using room ID: ${userRoomId}`)
-
-          await createPermanentJanusRoom(userRoomId)
-          await joinRoomAsPublisher(userRoomId)
-          return
+      let videoConstraints: MediaStreamConstraints["video"] = false
+      if (videoEnabled) {
+        if (initialVideoDeviceId) {
+          videoConstraints = { deviceId: { exact: initialVideoDeviceId } }
+        } else {
+          videoConstraints = true
         }
       }
 
-      // If we don't have a valid stream, create a new one
-      log("Creating new stream with constraints")
+      let audioConstraints: MediaStreamConstraints["audio"] = false
+      if (micEnabled) {
+        if (initialAudioDeviceId) {
+          audioConstraints = { deviceId: { exact: initialAudioDeviceId } }
+        } else {
+          audioConstraints = true
+        }
+      }
+
+      log(`getUserMedia video constraints: ${JSON.stringify(videoConstraints)}`)
+      log(`getUserMedia audio constraints: ${JSON.stringify(audioConstraints)}`)
+
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: videoDeviceId ? { deviceId: { exact: videoDeviceId } } : true,
-        audio: audioDeviceId ? { deviceId: { exact: audioDeviceId } } : true
+        audio: audioConstraints,
+        video: videoConstraints,
       })
-
-      log(`Stream obtained with ${stream.getVideoTracks().length} video and ${stream.getAudioTracks().length} audio tracks`)
-      stream.getTracks().forEach(track => {
-        log(`Track: ${track.kind} - ${track.label} - enabled: ${track.enabled}`)
-      })
-
       localStreamRef.current = stream
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream
       }
+      log("Streamer: Local media obtained.")
 
       await createJanusSession()
       await attachVideoRoomPlugin()
 
       const userRoomId = firebaseUid
       if (!userRoomId) {
-        throw new Error("User ID not available. Please try logging in again.")
+        throw new Error("User UID not available")
       }
 
       setCreatedRoomId(userRoomId)
       createdRoomIdRef.current = userRoomId
-      log(`Streamer: Using room ID: ${userRoomId}`)
+      log(`Using user UID as room ID: ${userRoomId}`)
 
       await createPermanentJanusRoom(userRoomId)
       await joinRoomAsPublisher(userRoomId)
-
     } catch (error: any) {
       log(`Streamer: Error starting stream: ${error.name} - ${error.message}`)
-      console.error("Detailed error:", error)
-      
-      const errorMessage = error.name === 'NotAllowedError' 
-        ? "Camera or microphone access was denied. Please grant permission and try again."
-        : `Failed to access selected devices. Please try:\n1. Checking your camera/mic connections\n2. Refreshing the page\n3. Selecting different devices`
-      
-      alert(errorMessage)
+      alert(`Error starting stream: ${error.message}`)
       stopStreamingCleanup()
     } finally {
       setIsLoading(false)
@@ -937,49 +993,15 @@ export default function StreamerPage() {
     return ""
   }
 
-  const stopStreaming = () => {
-    if (localVideoRef.current?.srcObject) {
-      const stream = localVideoRef.current.srcObject as MediaStream
-      stream.getTracks().forEach((track) => track.stop())
-      localVideoRef.current.srcObject = null
-    }
-    setIsStreaming(false)
-    setRoomId(null)
-    setViewers(0)
-  }
-
-  const toggleMic = () => {
-    setMicEnabled(!micEnabled)
-    if (localVideoRef.current?.srcObject) {
-      const stream = localVideoRef.current.srcObject as MediaStream
-      const audioTrack = stream.getAudioTracks()[0]
-      if (audioTrack) {
-        audioTrack.enabled = !micEnabled
-      }
-    }
-  }
-
-  const toggleVideo = () => {
-    setVideoEnabled(!videoEnabled)
-    if (localVideoRef.current?.srcObject) {
-      const stream = localVideoRef.current.srcObject as MediaStream
-      const videoTrack = stream.getVideoTracks()[0]
-      if (videoTrack) {
-        videoTrack.enabled = !videoEnabled
-      }
-    }
-  }
-
-  const shareStream = () => {
-    if (roomId || createdRoomId) {
-      const streamUrl = `${window.location.origin}/viewer?roomId=${roomId || createdRoomId}`
-      navigator.clipboard.writeText(streamUrl)
-      alert("Stream URL copied to clipboard!")
-    }
-  }
-
   const getUserDisplayName = () => {
     return user?.displayName || user?.email?.split("@")[0] || "User"
+  }
+
+  // Modified to pass device IDs to startStreaming
+  const handleDevicesSelected = (videoDeviceId: string | null, audioDeviceId: string | null) => {
+    setSelectedVideoDeviceId(videoDeviceId)
+    setSelectedAudioDeviceId(audioDeviceId)
+    startStreaming(videoDeviceId, audioDeviceId)
   }
 
   const handleDevicePermissionDenied = () => {
@@ -988,271 +1010,222 @@ export default function StreamerPage() {
     alert("Camera and microphone permissions are required to start streaming.")
   }
 
-  const testCamera = async () => {
-    try {
-      log("Testing camera access...")
-      
-      if (!navigator.mediaDevices) {
-        throw new Error("Media devices are not supported in this browser")
-      }
-
-      const isSecureContext = window.location.protocol === 'https:' || 
-                              window.location.hostname === 'localhost' || 
-                              window.location.hostname === '127.0.0.1' ||
-                              window.location.hostname === '::1'
-
-      if (!isSecureContext) {
-        throw new Error("Camera access requires HTTPS. Please access this page over a secure connection.")
-      }
-
-      log("Enumerating available devices...")
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      const videoDevices = devices.filter(d => d.kind === 'videoinput')
-      const audioDevices = devices.filter(d => d.kind === 'audioinput')
-      
-      log(`Found ${videoDevices.length} video devices and ${audioDevices.length} audio devices`)
-      videoDevices.forEach((device, index) => {
-        log(`Video device ${index + 1}: ${device.label || 'Unknown'} (${device.deviceId})`)
-      })
-      audioDevices.forEach((device, index) => {
-        log(`Audio device ${index + 1}: ${device.label || 'Unknown'} (${device.deviceId})`)
-      })
-
-      if (videoDevices.length === 0) {
-        throw new Error("No camera devices found. Please connect a camera and try again.")
-      }
-
-      const testStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-      log(`Test camera successful. Video tracks: ${testStream.getVideoTracks().length}`)
-      testStream.getVideoTracks().forEach((track, index) => {
-        log(`Test video track ${index}: ${track.label}`)
-      })
-      testStream.getTracks().forEach(track => track.stop())
-      alert("Camera test successful! All devices are working properly.")
-    } catch (error: any) {
-      log(`Camera test failed: ${error.name} - ${error.message}`)
-      alert(`Camera test failed: ${error.message}`)
-    }
-  }
-
-  const fetchViewCount = async () => {
-    if (!createdRoomId) return
-
-    try {
-      const headers = await getAuthHeaders()
-      const response = await fetch("https://superfan.alterwork.in/api/get_views", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            room_id: createdRoomId,
-          },
-        }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        if (data.views !== undefined) {
-          setViewers(data.views)
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching view count:", error)
-    }
-  }
-
-  const handleCancel = () => {
-    if (isStreaming) {
-      stopStreamingCleanup()
-    } else {
-      router.back()
-    }
-  }
-
-  const handleStartStop = () => {
-    if (isStreaming) {
-      stopStreamingCleanup()
-    } else {
-      handleInitialStartStreamSetup()
-    }
-  }
-
-  const handleStreamTypeChange = (value: string) => {
-    if (value === "new" || value === "old") {
-      setStreamType(value)
-    }
-  }
-
   return (
     <div className="min-h-screen bg-background">
-      <Navigation allUsers={[]} isLoadingUsers={false} />
+      <Navigation />
 
-      <div className="container mx-auto p-4 space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold">Start Streaming</h1>
-          {isStreaming && (
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <span className="text-red-500 font-medium">Live</span>
-              <Badge variant="secondary">{viewers} viewer{viewers !== 1 ? 's' : ''}</Badge>
-            </div>
-          )}
-        </div>
+      <div className="container mx-auto p-2 sm:p-4 pt-16">
+        {/* Already Live Alert */}
+        {showAlreadyLiveAlert && (
+          <Alert className="mb-4 border-orange-300 bg-orange-50 dark:border-orange-800 dark:bg-orange-950">
+            <AlertCircle className="h-4 w-4 text-orange-600" />
+            <AlertDescription className="flex flex-col sm:flex-row items-center justify-between gap-2 text-orange-800 dark:text-orange-200">
+              <span className="text-sm sm:text-base">
+                You are already live. Continue with old session or create new?
+              </span>
+              <div className="flex gap-2 mt-2 sm:mt-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleContinueWithOldSession}
+                  className="border-orange-300 text-orange-700 hover:bg-orange-100 bg-transparent"
+                >
+                  Continue with Old
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setShowAlreadyLiveAlert(false)
+                    handleInitialStartStreamSetup()
+                  }}
+                  className="bg-orange-600 text-white hover:bg-orange-700"
+                >
+                  Create New
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
 
-        <Card className="overflow-hidden">
-          <div className="relative bg-black aspect-video">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
-            {isLoading && (
-              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center">
-                <div className="text-center text-white">
-                  <div className="w-10 h-10 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                  <p className="font-medium">Starting Stream...</p>
-                  <p className="text-sm text-white/70">This may take a few moments</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+          {/* Main Content */}
+          <div className="lg:col-span-2 space-y-4">
+            {/* Video Section */}
+            <Card className="">
+              <CardContent className="p-0">
+                <div className="relative bg-black rounded-lg overflow-hidden" style={{ aspectRatio: "16/9" }}>
+                  <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+
+                  {/* Start Streaming Button - Only shown if not streaming and not checking status */}
+                  {!isStreaming && !isCheckingStatus && !showAlreadyLiveAlert && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                      <Button
+                        onClick={handleInitialStartStreamSetup}
+                        disabled={!firebaseUid || isLoading}
+                        size="lg"
+                        className="bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                      >
+                        {isLoading ? (
+                          <>
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                            Starting Stream...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="h-5 w-5 mr-2" />
+                            Start Streaming
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Loading/Checking Status Overlay */}
+                  {isCheckingStatus && !isStreaming && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
+                      <div className="text-center">
+                        <div className="w-10 h-10 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                        <p className="text-lg">Checking Stream Status...</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Video Disabled Overlay */}
+                  {!videoEnabled && isStreaming && (
+                    <div className="absolute inset-0 flex items-center justify-center text-white">
+                      <div className="text-center">
+                        <VideoOff className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                        <p className="text-lg">Video is disabled</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Stream Controls Overlay (Top Right) */}
+                  {isStreaming && (
+                    <div className="absolute top-4 right-4 flex items-center gap-2">
+                      <Button
+                        variant={micEnabled ? "default" : "destructive"}
+                        size="sm"
+                        onClick={handleMicToggle}
+                        className={
+                          micEnabled
+                            ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                            : ""
+                        }
+                      >
+                        {micEnabled ? <Mic className="h-4 w-4" /> : <MicOff className="h-4 w-4" />}
+                      </Button>
+                      <Button
+                        variant={videoEnabled ? "default" : "destructive"}
+                        size="sm"
+                        onClick={handleVideoToggle}
+                        className={
+                          videoEnabled
+                            ? "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
+                            : ""
+                        }
+                      >
+                        {videoEnabled ? <Video className="h-4 w-4" /> : <VideoOff className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Stream Info Overlay (Bottom Left) */}
+                  {isStreaming && (
+                    <div className="absolute bottom-4 left-4 flex items-center gap-2">
+                      <div className="bg-black/70 text-white px-3 py-1 rounded flex items-center gap-2">
+                        <Users className="w-4 h-4" />
+                        {formatNumber(viewers)} viewers
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
-            {!isStreaming && !isLoading && (
-              <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center">
-                <div className="text-center text-white">
-                  <Camera className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <p className="font-medium">Camera Preview</p>
-                  <p className="text-sm text-white/70">Set up your stream to begin</p>
-                </div>
-              </div>
+              </CardContent>
+            </Card>
+
+            {/* Stream Info - Only show when streaming */}
+            {isStreaming && (
+              <Card>
+                <CardContent className="p-4 sm:p-6">
+                  <div className="flex flex-col space-y-4">
+                    <div className="flex-1">
+                      <h1 className="text-lg sm:text-xl font-bold mb-3">{title}</h1>
+                      {description && <p className="text-muted-foreground mb-4 text-sm sm:text-base">{description}</p>}
+                      {tags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {tags.map((tag) => (
+                            <Badge key={tag} variant="outline" className="text-xs">
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground mb-4">
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3 sm:w-4 h-3 sm:h-4" />
+                          {formatNumber(viewers)} watching
+                        </span>
+                        <span>Duration: {streamDuration}</span>
+                        <Badge variant="destructive" className="animate-pulse text-xs">
+                          <div className="w-2 h-2 bg-white rounded-full mr-1"></div>
+                          LIVE
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3 mb-4 sm:mb-0">
+                        <Avatar className="h-8 sm:h-10 w-8 sm:w-10">
+                          <AvatarImage src="/placeholder.svg" alt="Channel" />
+                          <AvatarFallback>@</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <div className="font-medium text-sm sm:text-base">@{getUserDisplayName()}</div>
+                          <div className="text-xs sm:text-sm text-muted-foreground">Broadcasting live</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Mobile-responsive button layout */}
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-2 sm:justify-end">
+                      <Button
+                        onClick={stopStreamingCleanup}
+                        variant="destructive"
+                        size="sm"
+                        className="w-full sm:w-auto"
+                      >
+                        <Square className="h-4 w-4 mr-2" />
+                        Stop Stream
+                      </Button>
+                      <Button
+                        onClick={() => setShowShareModal(true)}
+                        variant="outline"
+                        size="sm"
+                        className="hover:bg-orange-50 dark:hover:bg-orange-950 w-full sm:w-auto"
+                      >
+                        <Share className="h-4 w-4 mr-2" />
+                        Share
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </div>
-        </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Stream Settings</h2>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="title">Stream Title</Label>
-                <Input
-                  id="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Enter a title for your stream"
-                  disabled={isStreaming || isLoading}
+          {/* Chat Section */}
+          <div>
+            <Card className="min-h-[400px] max-h-[80vh] lg:h-[600px] flex flex-col">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">Live Chat</CardTitle>
+              </CardHeader>
+              <CardContent className="p-0 flex-1">
+                <LiveChat
+                  roomId={createdRoomId}
+                  currentUserDisplayName={currentUserDisplayName}
+                  enableChat={enableChat}
                 />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Describe your stream"
-                  disabled={isStreaming || isLoading}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Stream Type</Label>
-                <Select
-                  value={streamType}
-                  onValueChange={handleStreamTypeChange}
-                  disabled={isStreaming || isLoading}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select stream type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="public">Public</SelectItem>
-                    <SelectItem value="private">Private</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Device Settings</h2>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Camera className="w-4 h-4" />
-                  <span>Camera</span>
-                </div>
-                <Switch
-                  checked={videoEnabled}
-                  onCheckedChange={setVideoEnabled}
-                  disabled={isStreaming || isLoading}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Mic className="w-4 h-4" />
-                  <span>Microphone</span>
-                </div>
-                <Switch
-                  checked={micEnabled}
-                  onCheckedChange={setMicEnabled}
-                  disabled={isStreaming || isLoading}
-                />
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => setShowDeviceSelectionModal(true)}
-                disabled={isStreaming || isLoading}
-                className="w-full"
-              >
-                <Settings className="w-4 h-4 mr-2" />
-                Configure Devices
-              </Button>
-            </div>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </div>
-
-        <div className="flex justify-end gap-4">
-          <Button
-            variant="outline"
-            onClick={handleCancel}
-            disabled={isLoading}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleStartStop}
-            disabled={isLoading || (!videoEnabled && !micEnabled)}
-            className={cn(
-              "min-w-[120px]",
-              isStreaming
-                ? "bg-red-500 hover:bg-red-600"
-                : "bg-gradient-to-r from-orange-600 to-orange-500 hover:from-orange-700 hover:to-orange-600"
-            )}
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                {isStreaming ? "Stopping..." : "Starting..."}
-              </>
-            ) : isStreaming ? (
-              <>
-                <Square className="w-4 h-4 mr-2" />
-                Stop Stream
-              </>
-            ) : (
-              <>
-                <Radio className="w-4 h-4 mr-2" />
-                Go Live
-              </>
-            )}
-          </Button>
-        </div>
-
-        <DeviceSelectionModal
-          open={showDeviceSelectionModal}
-          onOpenChange={setShowDeviceSelectionModal}
-          onDevicesSelected={handleDevicesSelected}
-          onPermissionDenied={handleDevicePermissionDenied}
-        />
       </div>
 
       <ShareModal
@@ -1263,6 +1236,7 @@ export default function StreamerPage() {
         isLoadingUrl={!createdRoomId || !currentHookId}
       />
 
+      {/* Stream Details Modal */}
       <StreamDetailsModal
         open={showStreamDetailsModal}
         onOpenChange={setShowStreamDetailsModal}
@@ -1273,6 +1247,14 @@ export default function StreamerPage() {
         onConfirmDetails={handleStreamDetailsConfirmed}
         isLoading={isLoading}
         firebaseUid={firebaseUid}
+      />
+
+      {/* Device Selection Modal */}
+      <DeviceSelectionModal
+        open={showDeviceSelectionModal}
+        onOpenChange={setShowDeviceSelectionModal}
+        onDevicesSelected={handleDevicesSelected}
+        onPermissionDenied={handleDevicePermissionDenied}
       />
     </div>
   )

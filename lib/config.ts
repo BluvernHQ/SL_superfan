@@ -71,4 +71,4 @@ export const buildThumbnailUrl = (hookId: string): string => {
 
 export const buildVideoUrl = (videoId: string): string => {
   return buildFileUrl("VIDEOS", `${videoId}.webm`)
-} 
+}

@@ -55,7 +55,7 @@ export function HomePage() {
       setIsLoadingStreams(true)
       const headers = await getAuthHeaders()
 
-      const response = await fetch(buildApiUrl(API_CONFIG.ENDPOINTS.GET_LIVE), {
+      const response = await fetch(buildApiUrl("/streams/live"), {
         method: "GET",
         headers,
       })
@@ -90,7 +90,7 @@ export function HomePage() {
   const fetchRecentStreams = useCallback(async () => {
     try {
       setIsLoadingRecentStreams(true)
-      const response = await fetch("https://superfan.alterwork.in/api/fetch_videos", {
+      const response = await fetch("https://superfan.alterwork.in/api/recordings/ranked", {
         method: "GET",
         headers: {
           "Content-Type": "application/json",

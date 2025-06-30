@@ -110,4 +110,4 @@ export function MobileLayout({ children }: MobileLayoutProps) {
       </main>
     </div>
   )
-} 
+}

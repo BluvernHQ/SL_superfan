@@ -2,13 +2,11 @@
 
 import { useState } from "react"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-// Removed VideoCarousel import as it will be replaced
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useRouter } from "next/navigation"
 import { auth } from "@/lib/firebase"
-import { getIdToken } from "firebase/auth"
 import { Twitter, Youtube, Instagram } from "lucide-react"
 
 interface Video {
@@ -32,16 +30,10 @@ interface ProfileTabsProps {
   onPlayRecording: (video: Video) => void
   profileData: any
   onEditProfile?: () => void
-  onEditPanels?: () => void // This prop will no longer be used but kept for interface consistency if other parts rely on it
   blacklistedUsers: string[]
   isLoadingBlocklist: boolean
   handleUnblacklistUser: (username: string) => Promise<void>
-  followersList: string[]
-  followingList: string[]
-  isLoadingFollowers: boolean
-  isLoadingFollowing: boolean
-  fetchFollowers: () => Promise<void>
-  fetchFollowing: () => Promise<void>
+  // Removed followersList, followingList, isLoadingFollowers, isLoadingFollowing, fetchFollowers, fetchFollowing
   aboutData: any
   isLoadingAbout: boolean
   fetchAboutDetails: () => Promise<void>
@@ -55,22 +47,16 @@ export function ProfileTabs({
   onPlayRecording: parentOnPlayRecording,
   profileData,
   onEditProfile,
-  onEditPanels, // This prop is no longer used
   blacklistedUsers,
   isLoadingBlocklist,
   handleUnblacklistUser,
-  followersList,
-  followingList,
-  isLoadingFollowers,
-  isLoadingFollowing,
-  fetchFollowers,
-  fetchFollowing,
+  // Removed followersList, followingList, isLoadingFollowers, isLoadingFollowing, fetchFollowers, fetchFollowing
   aboutData,
   isLoadingAbout,
   fetchAboutDetails,
 }: ProfileTabsProps) {
   const [activeTab, setActiveTab] = useState("home")
-  const [unfollowingUsers, setUnfollowingUsers] = useState<Set<string>>(new Set())
+  // Removed unfollowingUsers state as it's now handled in the parent component for the modal
   const router = useRouter()
 
   const formatNumber = (num: number) => {
@@ -88,13 +74,8 @@ export function ProfileTabs({
   const handleTabChange = (value: string) => {
     setActiveTab(value)
 
-    // Fetch data when switching to followers/following tabs
-    if (value === "followers" && followersList.length === 0 && !isLoadingFollowers) {
-      fetchFollowers()
-    } else if (value === "following" && followingList.length === 0 && !isLoadingFollowing) {
-      fetchFollowing()
-    } else if (value === "about" && !aboutData && !isLoadingAbout && auth.currentUser) {
-      // Only fetch if logged in
+    // Fetch data when switching to about tab
+    if (value === "about" && !aboutData && !isLoadingAbout && auth.currentUser) {
       fetchAboutDetails()
     }
   }
@@ -103,59 +84,7 @@ export function ProfileTabs({
     router.push(`/profile/${clickedUsername}`)
   }
 
-  const getAuthHeaders = async () => {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    }
-
-    if (auth.currentUser) {
-      try {
-        const authToken = await getIdToken(auth.currentUser)
-        headers["Authorization"] = `Bearer ${authToken}`
-      } catch (tokenError) {
-        console.log(`Error getting Firebase token: ${tokenError}`)
-      }
-    }
-
-    return headers
-  }
-
-  const handleUnfollow = async (usernameToUnfollow: string) => {
-    setUnfollowingUsers((prev) => new Set(prev).add(usernameToUnfollow))
-
-    try {
-      const headers = await getAuthHeaders()
-      const response = await fetch("https://superfan.alterwork.in/api/un_follow", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          payload: {
-            unfollow: usernameToUnfollow,
-          },
-        }),
-      })
-
-      if (response.ok) {
-        // Refresh the following list
-        await fetchFollowing()
-        console.log(`Successfully unfollowed ${usernameToUnfollow}`)
-      } else {
-        const errorData = await response.json().catch(() => ({ reason: "Unknown error" }))
-        console.error(`Failed to unfollow: ${response.status} - ${errorData.message || errorData.reason}`)
-        alert(`Failed to unfollow user: ${errorData.message || "Please try again."}`)
-      }
-    } catch (error: any) {
-      console.error(`Error unfollowing user: ${error.message}`)
-      alert(`Error unfollowing user: ${error.message}`)
-    } finally {
-      setUnfollowingUsers((prev) => {
-        const newSet = new Set(prev)
-        newSet.delete(usernameToUnfollow)
-        return newSet
-      })
-    }
-  }
+  // Removed getAuthHeaders and handleUnfollow as they are now handled in the parent component for the modals
 
   console.log("ProfileTabs - isOwnProfile:", isOwnProfile)
 
@@ -164,11 +93,17 @@ export function ProfileTabs({
       {/* Mobile-optimized tab navigation */}
       <div className="flex justify-center mb-4 sm:mb-6">
         <TabsList className="flex w-full max-w-md gap-1 p-1 h-12 sm:h-10">
-          <TabsTrigger value="home" className="flex-1 text-xs sm:text-sm h-10">Home</TabsTrigger>
-          <TabsTrigger value="about" className="flex-1 text-xs sm:text-sm h-10">About</TabsTrigger>
-          {isOwnProfile && <TabsTrigger value="followers" className="flex-1 text-xs sm:text-sm h-10">Followers</TabsTrigger>}
-          {isOwnProfile && <TabsTrigger value="following" className="flex-1 text-xs sm:text-sm h-10">Following</TabsTrigger>}
-          {isOwnProfile && <TabsTrigger value="blocklist" className="flex-1 text-xs sm:text-sm h-10">Blocklist</TabsTrigger>}
+          <TabsTrigger value="home" className="flex-1 text-xs sm:text-sm h-10">
+            Home
+          </TabsTrigger>
+          <TabsTrigger value="about" className="flex-1 text-xs sm:text-sm h-10">
+            About
+          </TabsTrigger>
+          {isOwnProfile && (
+            <TabsTrigger value="blocklist" className="flex-1 text-xs sm:text-sm h-10">
+              Blocklist
+            </TabsTrigger>
+          )}
         </TabsList>
       </div>
 
@@ -321,119 +256,6 @@ export function ProfileTabs({
       </TabsContent>
 
       {isOwnProfile && (
-        <TabsContent value="followers" className="mt-0">
-          <Card className="mt-0 sm:mt-6 border-0 shadow-none sm:border sm:shadow">
-            <CardHeader className="pb-3 sm:pb-6">
-              <CardTitle className="text-lg sm:text-xl">Followers ({formatNumber(profileData?.followers || 0)})</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 sm:pt-0">
-              {isLoadingFollowers ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
-                  {Array.from({ length: 8 }).map((_, index) => (
-                    <div key={index} className="flex flex-col items-center p-2 sm:p-3 border rounded-lg animate-pulse">
-                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-muted rounded-full mb-2"></div>
-                      <div className="h-2 sm:h-3 bg-muted rounded w-full"></div>
-                    </div>
-                  ))}
-                </div>
-              ) : followersList.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
-                  {followersList.map((followerUsername) => (
-                    <div
-                      key={followerUsername}
-                      className="flex flex-col items-center p-2 sm:p-3 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                      onClick={() => handleUserClick(followerUsername)}
-                    >
-                      <Avatar className="h-12 w-12 sm:h-16 sm:w-16 mb-2">
-                        <AvatarImage
-                          src={`https://superfan.alterwork.in/files/profilepic/${followerUsername}.png`}
-                          alt={followerUsername}
-                          onError={(e) => {
-                            e.currentTarget.src = "/placeholder.svg?height=64&width=64"
-                          }}
-                        />
-                        <AvatarFallback className="text-sm sm:text-lg">{followerUsername.charAt(0).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <span className="text-xs sm:text-sm font-medium text-center truncate w-full">@{followerUsername}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 sm:py-12">
-                  <p className="text-muted-foreground text-sm sm:text-base">No followers yet</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      )}
-
-      {isOwnProfile && (
-        <TabsContent value="following" className="mt-0">
-          <Card className="mt-0 sm:mt-6 border-0 shadow-none sm:border sm:shadow">
-            <CardHeader className="pb-3 sm:pb-6">
-              <CardTitle className="text-lg sm:text-xl">Following ({formatNumber(profileData?.following || 0)})</CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0 sm:pt-0">
-              {isLoadingFollowing ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
-                  {Array.from({ length: 8 }).map((_, index) => (
-                    <div key={index} className="flex flex-col items-center p-2 sm:p-3 border rounded-lg animate-pulse">
-                      <div className="w-12 h-12 sm:w-16 sm:h-16 bg-muted rounded-full mb-2"></div>
-                      <div className="h-2 sm:h-3 bg-muted rounded w-full mb-2"></div>
-                      <div className="h-6 bg-muted rounded w-full"></div>
-                    </div>
-                  ))}
-                </div>
-              ) : followingList.length > 0 ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
-                  {followingList.map((followingUsername) => (
-                    <div
-                      key={followingUsername}
-                      className="flex flex-col items-center p-2 sm:p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-                    >
-                      <Avatar
-                        className="h-12 w-12 sm:h-16 sm:w-16 mb-2 cursor-pointer"
-                        onClick={() => handleUserClick(followingUsername)}
-                      >
-                        <AvatarImage
-                          src={`https://superfan.alterwork.in/files/profilepic/${followingUsername}.png`}
-                          alt={followingUsername}
-                          onError={(e) => {
-                            e.currentTarget.src = "/placeholder.svg?height=64&width=64"
-                          }}
-                        />
-                        <AvatarFallback className="text-sm sm:text-lg">{followingUsername.charAt(0).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <span
-                        className="text-xs sm:text-sm font-medium text-center truncate w-full mb-2 cursor-pointer"
-                        onClick={() => handleUserClick(followingUsername)}
-                      >
-                        @{followingUsername}
-                      </span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full text-xs h-7 sm:h-8"
-                        onClick={() => handleUnfollow(followingUsername)}
-                        disabled={unfollowingUsers.has(followingUsername)}
-                      >
-                        {unfollowingUsers.has(followingUsername) ? "Unfollowing..." : "Unfollow"}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8 sm:py-12">
-                  <p className="text-muted-foreground text-sm sm:text-base">Not following anyone yet</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      )}
-
-      {isOwnProfile && (
         <TabsContent value="blocklist" className="mt-0">
           <Card className="mt-0 sm:mt-6 border-0 shadow-none sm:border sm:shadow">
             <CardHeader className="pb-3 sm:pb-6">
@@ -462,13 +284,17 @@ export function ProfileTabs({
                             e.currentTarget.src = "/placeholder.svg?height=64&width=64"
                           }}
                         />
-                        <AvatarFallback className="text-sm sm:text-lg">{blockedUsername.charAt(0).toUpperCase()}</AvatarFallback>
+                        <AvatarFallback className="text-sm sm:text-lg">
+                          {blockedUsername.charAt(0).toUpperCase()}
+                        </AvatarFallback>
                       </Avatar>
-                      <span className="text-xs sm:text-sm font-medium text-center truncate w-full mb-2">@{blockedUsername}</span>
+                      <span className="text-xs sm:text-sm font-medium text-center truncate w-full mb-2">
+                        @{blockedUsername}
+                      </span>
                       <Button
                         size="sm"
                         variant="outline"
-                        className="w-full text-xs h-7 sm:h-8"
+                        className="w-full text-xs h-7 sm:h-8 bg-transparent"
                         onClick={() => handleUnblacklistUser(blockedUsername)}
                       >
                         Unblock

@@ -55,7 +55,7 @@ export default function ViewerPage() {
       setError(null)
 
       // Fetch video details from the new API endpoint
-      const response = await fetch(`https://superfan.alterwork.in/api/get_rec_det/${id}`, {
+      const response = await fetch(`https://superfan.alterwork.in/api/recordings/${id}/details`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",

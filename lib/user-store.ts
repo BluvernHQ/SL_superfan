@@ -77,7 +77,7 @@ export const useUserStore = create<UserStore>((set, get) => ({
       }
 
       // Fetch users from API
-      const response = await fetch("https://superfan.alterwork.in/api/fetch_users", {
+      const response = await fetch("https://superfan.alterwork.in/api/users/ranked", {
         method: "GET",
         headers,
       })
@@ -184,4 +184,4 @@ export const useUserStore = create<UserStore>((set, get) => ({
   clearUsers: () => {
     set({ users: [], isLoading: false, lastFetched: null })
   }
-})) 
+}))
